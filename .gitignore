@@ -1,0 +1,17 @@
+.godot/
+exports/
+build/*
+!build/web/
+build/web/*
+!build/web/index.html
+!build/web/index.js
+!build/web/index.pck
+!build/web/index.wasm
+!build/web/index.audio.position.worklet.js
+!build/web/index.audio.worklet.js
+!build/web/index.icon.png
+!build/web/index.apple-touch-icon.png
+!build/web/index.png
+/index.wasm
+tests/preview_*.png
+tests/preview_*.png.import

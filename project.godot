@@ -1,0 +1,25 @@
+; SQL Quest: From Zero to Cyber Hero — Godot 4.3+
+config_version=5
+
+[application]
+config/name="SQL Quest: From Zero to Cyber Hero"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1152
+window/size/viewport_height=720
+window/size/window_width_override=1152
+window/size/window_height_override=720
+window/size/min_width=960
+window/size/min_height=600
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+
+[audio]
+buses/default_bus_layout="res://default_bus_layout.tres"

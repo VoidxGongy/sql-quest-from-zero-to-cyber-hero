@@ -1,0 +1,648 @@
+{
+  "assets": [
+    {
+      "file": "buildings/academy_exterior.png",
+      "sheet": "world",
+      "source_rect_px": [
+        0,
+        0,
+        492,
+        328
+      ],
+      "size_px": [
+        492,
+        328
+      ]
+    },
+    {
+      "file": "buildings/database_facility.png",
+      "sheet": "world",
+      "source_rect_px": [
+        490,
+        0,
+        838,
+        320
+      ],
+      "size_px": [
+        348,
+        320
+      ]
+    },
+    {
+      "file": "buildings/server_center.png",
+      "sheet": "world",
+      "source_rect_px": [
+        835,
+        0,
+        1108,
+        197
+      ],
+      "size_px": [
+        273,
+        197
+      ]
+    },
+    {
+      "file": "buildings/cyber_dome.png",
+      "sheet": "world",
+      "source_rect_px": [
+        1100,
+        0,
+        1314,
+        197
+      ],
+      "size_px": [
+        214,
+        197
+      ]
+    },
+    {
+      "file": "buildings/cafe.png",
+      "sheet": "world",
+      "source_rect_px": [
+        1308,
+        0,
+        1535,
+        193
+      ],
+      "size_px": [
+        227,
+        193
+      ]
+    },
+    {
+      "file": "environment/grass_and_paths.png",
+      "sheet": "world",
+      "source_rect_px": [
+        0,
+        326,
+        570,
+        525
+      ],
+      "size_px": [
+        570,
+        199
+      ]
+    },
+    {
+      "file": "environment/water_and_stairs.png",
+      "sheet": "world",
+      "source_rect_px": [
+        570,
+        326,
+        1535,
+        447
+      ],
+      "size_px": [
+        965,
+        121
+      ]
+    },
+    {
+      "file": "environment/trees_and_flowers.png",
+      "sheet": "world",
+      "source_rect_px": [
+        0,
+        515,
+        1150,
+        640
+      ],
+      "size_px": [
+        1150,
+        125
+      ]
+    },
+    {
+      "file": "environment/rocks.png",
+      "sheet": "world",
+      "source_rect_px": [
+        1252,
+        530,
+        1535,
+        632
+      ],
+      "size_px": [
+        283,
+        102
+      ]
+    },
+    {
+      "file": "props/outdoor_objects.png",
+      "sheet": "world",
+      "source_rect_px": [
+        0,
+        638,
+        1170,
+        744
+      ],
+      "size_px": [
+        1170,
+        106
+      ]
+    },
+    {
+      "file": "props/servers_security.png",
+      "sheet": "world",
+      "source_rect_px": [
+        1160,
+        635,
+        1535,
+        743
+      ],
+      "size_px": [
+        375,
+        108
+      ]
+    },
+    {
+      "file": "characters/outdoor_npc_sprite_rows.png",
+      "sheet": "world",
+      "source_rect_px": [
+        0,
+        743,
+        1535,
+        1023
+      ],
+      "size_px": [
+        1535,
+        280
+      ]
+    },
+    {
+      "file": "portraits/hero.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        0,
+        0,
+        175,
+        188
+      ],
+      "size_px": [
+        175,
+        188
+      ]
+    },
+    {
+      "file": "portraits/professor_byte.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        177,
+        0,
+        353,
+        188
+      ],
+      "size_px": [
+        176,
+        188
+      ]
+    },
+    {
+      "file": "portraits/nova.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        346,
+        0,
+        523,
+        188
+      ],
+      "size_px": [
+        177,
+        188
+      ]
+    },
+    {
+      "file": "portraits/zero.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        508,
+        0,
+        690,
+        188
+      ],
+      "size_px": [
+        182,
+        188
+      ]
+    },
+    {
+      "file": "portraits/nullsec.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        678,
+        0,
+        848,
+        188
+      ],
+      "size_px": [
+        170,
+        188
+      ]
+    },
+    {
+      "file": "portraits/expression_strip.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        0,
+        190,
+        1085,
+        282
+      ],
+      "size_px": [
+        1085,
+        92
+      ]
+    },
+    {
+      "file": "characters/animation_frames.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        848,
+        0,
+        1535,
+        282
+      ],
+      "size_px": [
+        687,
+        282
+      ]
+    },
+    {
+      "file": "levels/security_control_room.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        0,
+        284,
+        486,
+        508
+      ],
+      "size_px": [
+        486,
+        224
+      ]
+    },
+    {
+      "file": "levels/server_hall.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        492,
+        283,
+        844,
+        510
+      ],
+      "size_px": [
+        352,
+        227
+      ]
+    },
+    {
+      "file": "levels/server_vault.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        845,
+        281,
+        1192,
+        509
+      ],
+      "size_px": [
+        347,
+        228
+      ]
+    },
+    {
+      "file": "levels/security_office.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        1195,
+        281,
+        1535,
+        509
+      ],
+      "size_px": [
+        340,
+        228
+      ]
+    },
+    {
+      "file": "levels/academy_front.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        0,
+        505,
+        477,
+        701
+      ],
+      "size_px": [
+        477,
+        196
+      ]
+    },
+    {
+      "file": "levels/duel_arena.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        482,
+        507,
+        863,
+        701
+      ],
+      "size_px": [
+        381,
+        194
+      ]
+    },
+    {
+      "file": "environment/tech_tiles_and_props.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        864,
+        510,
+        1535,
+        705
+      ],
+      "size_px": [
+        671,
+        195
+      ]
+    },
+    {
+      "file": "ui/dialogue_frame.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        0,
+        703,
+        324,
+        855
+      ],
+      "size_px": [
+        324,
+        152
+      ]
+    },
+    {
+      "file": "ui/terminal_frame.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        324,
+        700,
+        550,
+        840
+      ],
+      "size_px": [
+        226,
+        140
+      ]
+    },
+    {
+      "file": "ui/mission_panel.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        549,
+        698,
+        653,
+        848
+      ],
+      "size_px": [
+        104,
+        150
+      ]
+    },
+    {
+      "file": "ui/rpg_hud.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        653,
+        705,
+        995,
+        848
+      ],
+      "size_px": [
+        342,
+        143
+      ]
+    },
+    {
+      "file": "ui/icons.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        992,
+        704,
+        1535,
+        854
+      ],
+      "size_px": [
+        543,
+        150
+      ]
+    },
+    {
+      "file": "effects/cyber_effects.png",
+      "sheet": "ui",
+      "source_rect_px": [
+        0,
+        849,
+        1535,
+        1023
+      ],
+      "size_px": [
+        1535,
+        174
+      ]
+    },
+    {
+      "file": "characters/protagonist_walk_sheet.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        7,
+        0,
+        294,
+        280
+      ],
+      "size_px": [
+        287,
+        280
+      ]
+    },
+    {
+      "file": "characters/professor_walk_sheet.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        292,
+        0,
+        585,
+        196
+      ],
+      "size_px": [
+        293,
+        196
+      ]
+    },
+    {
+      "file": "characters/npc_and_hacker_sheet.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        585,
+        0,
+        1111,
+        196
+      ],
+      "size_px": [
+        526,
+        196
+      ]
+    },
+    {
+      "file": "portraits/professor_emotions.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        1110,
+        0,
+        1534,
+        101
+      ],
+      "size_px": [
+        424,
+        101
+      ]
+    },
+    {
+      "file": "portraits/hero_emotions.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        1110,
+        102,
+        1534,
+        206
+      ],
+      "size_px": [
+        424,
+        104
+      ]
+    },
+    {
+      "file": "levels/classroom.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        285,
+        298,
+        715,
+        585
+      ],
+      "size_px": [
+        430,
+        287
+      ]
+    },
+    {
+      "file": "levels/computer_lab.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        707,
+        298,
+        1118,
+        583
+      ],
+      "size_px": [
+        411,
+        285
+      ]
+    },
+    {
+      "file": "levels/sql_injection_lab.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        284,
+        593,
+        710,
+        866
+      ],
+      "size_px": [
+        426,
+        273
+      ]
+    },
+    {
+      "file": "levels/server_room.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        710,
+        590,
+        1115,
+        865
+      ],
+      "size_px": [
+        405,
+        275
+      ]
+    },
+    {
+      "file": "tilesets/floor_and_wall_tiles.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        0,
+        280,
+        285,
+        857
+      ],
+      "size_px": [
+        285,
+        577
+      ]
+    },
+    {
+      "file": "props/pc_tables_servers.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        1112,
+        275,
+        1534,
+        867
+      ],
+      "size_px": [
+        422,
+        592
+      ]
+    },
+    {
+      "file": "buildings/academy_entrance.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        0,
+        858,
+        370,
+        1023
+      ],
+      "size_px": [
+        370,
+        165
+      ]
+    },
+    {
+      "file": "props/outdoor_decoration.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        368,
+        861,
+        1115,
+        1023
+      ],
+      "size_px": [
+        747,
+        162
+      ]
+    },
+    {
+      "file": "ui/interaction_and_effect_icons.png",
+      "sheet": "rooms",
+      "source_rect_px": [
+        1113,
+        867,
+        1535,
+        1023
+      ],
+      "size_px": [
+        422,
+        156
+      ]
+    }
+  ]
+}

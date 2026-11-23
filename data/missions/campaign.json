@@ -1,0 +1,255 @@
+[
+  {
+    "title": "Primer día en CyberAcademy",
+    "room": 2,
+    "mentor": "Profesor Byte",
+    "rank": "Aprendiz de bases de datos",
+    "badge": "Explorador SQL",
+    "objective": "Localiza únicamente el registro de Nova en estudiantes. Incluye id y nombre en el resultado.",
+    "lesson": "SELECT elige columnas, FROM indica una tabla y WHERE filtra filas. Empieza inspeccionando el esquema y experimenta con una lectura pequeña.",
+    "hints": [
+      "Busca la tabla estudiantes en Esquema.",
+      "WHERE compara una columna con un valor. El texto lleva comillas simples.",
+      "Filtra por nombre o por id. Debe aparecer solo Nova, con su id y nombre."
+    ],
+    "goals": [
+      "Encontrar a Nova con una consulta"
+    ],
+    "xp": 150,
+    "criteria": [
+      "found"
+    ],
+    "tools": [
+      "query"
+    ],
+    "writable": false,
+    "target_record": {
+      "id": 2,
+      "nombre": "Nova"
+    }
+  },
+  {
+    "title": "El sistema de inicio de sesión",
+    "room": 3,
+    "mentor": "Profesor Byte",
+    "rank": "Analista de seguridad junior",
+    "badge": "Lector de consultas",
+    "objective": "Comprueba un login válido (nova / nova123), otro inválido y provoca un error de sintaxis para localizar la concatenación.",
+    "lesson": "El login inserta usuario y clave entre comillas. Sigue Entrada → consulta → resultado. Un error puede revelar que un dato está cambiando la estructura SQL.",
+    "hints": [
+      "Prueba las credenciales de demostración y luego una clave equivocada.",
+      "Observa las comillas que rodean cada campo en la consulta construida.",
+      "Investiga qué ocurre si un campo contiene una comilla simple sin pareja."
+    ],
+    "goals": [
+      "Login legítimo",
+      "Rechazo de clave incorrecta",
+      "Evidencia de concatenación"
+    ],
+    "xp": 180,
+    "criteria": [
+      "valid",
+      "invalid",
+      "syntax"
+    ],
+    "tools": [
+      "login"
+    ],
+    "writable": false
+  },
+  {
+    "title": "La primera inyección SQL",
+    "room": 4,
+    "mentor": "Zero",
+    "rank": "Pentester en formación",
+    "badge": "Lógica bajo control",
+    "objective": "Consigue acceso sin conocer la clave y compara con una entrada modificada que no conceda acceso.",
+    "lesson": "Una entrada que sale de la cadena puede modificar WHERE. AND se evalúa antes que OR. -- comenta hasta el final de la línea. Investiga solo esta aplicación ficticia.",
+    "hints": [
+      "Una comilla puede cerrar un literal; después el motor espera SQL válido.",
+      "Una condición verdadera puede ampliar las filas; una falsa produce otra respuesta.",
+      "Combina OR, comparaciones y comentarios. Cambia una comparación y vuelve a probar."
+    ],
+    "goals": [
+      "Demostrar acceso indebido",
+      "Contraprueba sin acceso"
+    ],
+    "xp": 220,
+    "criteria": [
+      "bypass",
+      "negative"
+    ],
+    "tools": [
+      "login"
+    ],
+    "writable": false
+  },
+  {
+    "title": "Investigación de datos expuestos",
+    "room": 4,
+    "mentor": "Nova",
+    "rank": "Especialista en SQL Injection",
+    "badge": "Investigador de exposición",
+    "objective": "Usa el buscador vulnerable para recuperar AURORA-42 desde documentos y registra evidencia, causa y corrección en tu informe.",
+    "lesson": "UNION combina dos SELECT con igual número de columnas. El buscador solo debería mostrar nombres públicos. Observa su consulta y el esquema de documentos.",
+    "hints": [
+      "El buscador devuelve dos columnas.",
+      "UNION debe mantener dos columnas; documentos tiene titulo y contenido.",
+      "Cierra el texto antes de añadir otra consulta y comenta el sufijo."
+    ],
+    "goals": [
+      "Recuperar evidencia fuera del buscador",
+      "Documentar el hallazgo"
+    ],
+    "xp": 250,
+    "criteria": [
+      "leak",
+      "report"
+    ],
+    "tools": [
+      "search",
+      "report"
+    ],
+    "writable": false
+  },
+  {
+    "title": "El sistema silencioso",
+    "room": 6,
+    "mentor": "Zero",
+    "rank": "Analista de ciberseguridad",
+    "badge": "Señales invisibles",
+    "objective": "Investiga la hipótesis de un contenido con prefijo AURORA. Compara condiciones verdadera y falsa con ambos sensores.",
+    "lesson": "El sensor oculta las filas: solo muestra presencia o latencia virtual. Es un modelo de inferencia ciega; no ejecuta SLEEP ni causa esperas reales. El prefijo AURORA es una hipótesis proporcionada por Zero.",
+    "hints": [
+      "Escribe una condición WHERE sobre documentos, sin SELECT.",
+      "LIKE admite % para cualquier secuencia. Compara un prefijo plausible y uno imposible.",
+      "Obtén señales diferentes en el sensor booleano y en el temporal."
+    ],
+    "goals": [
+      "Señal positiva",
+      "Señal negativa",
+      "Latencia virtual alta",
+      "Latencia virtual baja"
+    ],
+    "xp": 280,
+    "criteria": [
+      "bool_yes",
+      "bool_no",
+      "time_yes",
+      "time_no"
+    ],
+    "tools": [
+      "sensors"
+    ],
+    "writable": false
+  },
+  {
+    "title": "Reparando vulnerabilidades",
+    "room": 3,
+    "mentor": "Profesor Byte",
+    "rank": "Experto en seguridad de aplicaciones",
+    "badge": "Constructor de defensas",
+    "objective": "Edita las consultas de login y documentos con parámetros. Supera las pruebas conservando acceso legítimo sin exponer datos ajenos.",
+    "lesson": "Login recibe [usuario, clave]; documentos recibe [id solicitado, id de sesión]. Cada ? recibe un valor separado. owner_id debe coincidir con la sesión, nunca con una identidad enviada por el cliente. Validar entrada no reemplaza parametrizar.",
+    "hints": [
+      "Edita las dos sentencias en Reparación y ejecuta la batería.",
+      "El login necesita usuario y clave. No pongas ? entre comillas.",
+      "Documentos necesita id y owner_id. Las pruebas indican qué comportamiento falló."
+    ],
+    "goals": [
+      "Regresión de login superada",
+      "Autorización por propietario superada"
+    ],
+    "xp": 320,
+    "criteria": [
+      "login_fixed",
+      "access_fixed"
+    ],
+    "tools": [
+      "patch"
+    ],
+    "writable": false
+  },
+  {
+    "title": "Primera práctica profesional",
+    "room": 5,
+    "mentor": "Director Kernel",
+    "rank": "Consultor de aplicaciones",
+    "badge": "Primera experiencia",
+    "objective": "Investiga login y búsqueda, repara ambos controles y entrega un informe. Marca los dos incidentes como resuelto mediante UPDATE.",
+    "lesson": "Una entrega profesional combina evidencia, impacto, reparación y regresión. El estado del incidente debe reflejar pruebas verificadas.",
+    "hints": [
+      "Reproduce un acceso indebido y una exposición de documentos.",
+      "Reparación comprueba accesos válidos, ataques y acceso entre cuentas.",
+      "UPDATE requiere SET y un filtro WHERE. Adjunta evidencia, causa y corrección."
+    ],
+    "goals": [
+      "Bypass reproducido",
+      "Exposición reproducida",
+      "Login reparado",
+      "Acceso reparado",
+      "Informe técnico",
+      "Incidentes resueltos"
+    ],
+    "xp": 380,
+    "criteria": [
+      "bypass",
+      "leak",
+      "login_fixed",
+      "access_fixed",
+      "report",
+      "resolved"
+    ],
+    "tools": [
+      "query",
+      "login",
+      "search",
+      "patch",
+      "report"
+    ],
+    "writable": true,
+    "resolved_ids": [
+      1,
+      2
+    ]
+  },
+  {
+    "title": "El trabajo de tus sueños",
+    "room": 7,
+    "mentor": "Alex",
+    "rank": "Cyber Hero · contratado",
+    "badge": "Certificación Cyber Hero",
+    "objective": "Demuestra dos vulnerabilidades, corrige los controles, valida y entrega un informe. Crea un registro nuevo en incidentes con título descriptivo y estado certificado mediante INSERT.",
+    "lesson": "Alex: «Tu entrevista es práctica. Muéstrame cómo investigas, cómo corriges y cómo sabes que funciona. Usa exclusivamente este entorno ficticio». Demuestra todo lo aprendido para conseguir el empleo.",
+    "hints": [
+      "Repite tu metodología de investigación.",
+      "Rechazar todo no es una reparación: las pruebas legítimas deben pasar.",
+      "INSERT INTO necesita columnas y VALUES. Usa un id nuevo y estado certificado."
+    ],
+    "goals": [
+      "Acceso indebido demostrado",
+      "Exposición demostrada",
+      "Login protegido",
+      "Autorización validada",
+      "Informe de entrevista",
+      "Registro de certificación"
+    ],
+    "xp": 500,
+    "criteria": [
+      "bypass",
+      "leak",
+      "login_fixed",
+      "access_fixed",
+      "report",
+      "certificate"
+    ],
+    "tools": [
+      "query",
+      "login",
+      "search",
+      "patch",
+      "report"
+    ],
+    "writable": true
+  }
+]
