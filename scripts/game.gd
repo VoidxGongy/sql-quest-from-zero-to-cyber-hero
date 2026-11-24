@@ -56,6 +56,8 @@ var new_game_confirm := false
 var overlay_tween: Tween
 
 func _ready() -> void:
+    if DisplayServer.is_touchscreen_available():
+        get_tree().root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
     RenderingServer.set_default_clear_color(Color("091522"))
     for action in ["touch_up", "touch_down", "touch_left", "touch_right"]:
         if not InputMap.has_action(action): InputMap.add_action(action)
@@ -139,12 +141,14 @@ func _build_touch_controls() -> void:
     touch_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     touch_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
     ui.add_child(touch_controls)
-    for item in [["↑", "touch_up", 76, -180], ["←", "touch_left", 16, -120], ["↓", "touch_down", 76, -120], ["→", "touch_right", 136, -120]]:
+    for item in [["↑", "touch_up", 104, -218], ["←", "touch_left", 16, -130], ["↓", "touch_down", 104, -130], ["→", "touch_right", 192, -130]]:
         var button := Button.new()
         button.text = item[0]
         button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
         button.position = Vector2(item[2], item[3])
-        button.size = Vector2(56, 56)
+        button.size = Vector2(80, 80)
+        button.add_theme_font_override("font", preload("res://assets/fonts/DejaVuSansMono.ttf"))
+        button.add_theme_font_size_override("font_size", 32)
         var action: String = item[1]
         button.button_down.connect(func(): Input.action_press(action))
         button.button_up.connect(func(): Input.action_release(action))
@@ -152,8 +156,9 @@ func _build_touch_controls() -> void:
     var interact := Button.new()
     interact.text = "E"
     interact.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-    interact.position = Vector2(-100, -126)
-    interact.size = Vector2(72, 72)
+    interact.position = Vector2(-120, -130)
+    interact.size = Vector2(96, 96)
+    interact.add_theme_font_size_override("font_size", 30)
     interact.pressed.connect(_interact)
     touch_controls.add_child(interact)
     touch_controls.hide()
@@ -178,14 +183,23 @@ func _build_hud() -> void:
     row.add_child(labels)
     hud_title = UI.label(labels, "CYBERACADEMY", 20, UI.GREEN)
     hud_mission = UI.label(labels, "", 14)
+    if DisplayServer.is_touchscreen_available():
+        hud_title.add_theme_font_size_override("font_size", 24)
+        hud_mission.add_theme_font_size_override("font_size", 19)
     for label in [hud_title, hud_mission]:
         label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
         label.clip_text = true
-    UI.button(row, "Diario · J", func(): _notebook("Diario"))
-    UI.button(row, "Reanudar misión", _resume_mission)
-    UI.button(row, "Mapa · Tab", func(): _notebook("Mapa"))
-    UI.button(row, "Perfil · P", func(): _notebook("Perfil"))
-    UI.button(row, "Pausa · Esc", _pause)
+    var touch := DisplayServer.is_touchscreen_available()
+    UI.button(row, "Diario" if touch else "Diario · J", func(): _notebook("Diario"))
+    UI.button(row, "Misión" if touch else "Reanudar misión", _resume_mission)
+    UI.button(row, "Mapa" if touch else "Mapa · Tab", func(): _notebook("Mapa"))
+    UI.button(row, "Perfil" if touch else "Perfil · P", func(): _notebook("Perfil"))
+    UI.button(row, "Pausa" if touch else "Pausa · Esc", _pause)
+    if touch:
+        for child in row.get_children():
+            if child is Button:
+                child.add_theme_font_size_override("font_size", 20)
+                child.custom_minimum_size.y = 56
     xp_bar = ProgressBar.new()
     xp_bar.custom_minimum_size.y = 6
     xp_bar.show_percentage = false
@@ -397,7 +411,7 @@ func _process(delta: float) -> void:
         var player_screen := hero.get_global_transform_with_canvas().origin
         var viewport_size := get_viewport_rect().size
         prompt.position = Vector2(clampf(player_screen.x - 180, 8, maxf(8, viewport_size.x - 368)), clampf(player_screen.y - 100, 84, maxf(84, viewport_size.y - 85)))
-        help_bar.visible = true
+        help_bar.visible = not DisplayServer.is_touchscreen_available()
     elif prompt:
         prompt.text = ""
         prompt.hide()
