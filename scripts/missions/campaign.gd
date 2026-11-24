@@ -1,9 +1,13 @@
 class_name QuestCampaign
 extends RefCounted
+## Campaign state and safe, in-memory SQL Injection simulations.
+
 signal mission_completed(index: int, earned_xp: int)
 signal changed
+
 const SQL = preload("res://scripts/sql_simulator/query_engine.gd")
 const DATA_PATH := "res://data/missions/campaign.json"
+
 var missions: Array = []
 var current := 0
 var xp := 0
@@ -14,216 +18,257 @@ var history: Array = []
 var reports: Dictionary = {}
 var collected: Array = []
 var earned_evidence: Array = []
+var briefed: Array = []
 var db = SQL.new()
-var login_patch := "SELECT * FROM usuarios WHERE usuario = 'entrada' AND clave = 'entrada'"
-var document_patch := "SELECT id, titulo, contenido FROM documentos WHERE id = 1"
+var patch_text := ""
 var last_attack := ""
+var lessons: Dictionary = {}
+var guided_mode := false
+
+func lesson_state() -> Dictionary:
+	var key := str(current)
+	if not lessons.has(key):
+		lessons[key] = {"stage": 0, "step": 0, "normal": false, "guided": false, "compared": false}
+	return lessons[key]
+
+func save_lesson() -> void:
+	changed.emit()
 
 func _init() -> void:
-    missions = JSON.parse_string(FileAccess.get_file_as_string(DATA_PATH))
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(DATA_PATH))
+	missions = parsed if parsed is Array else []
+	patch_text = _vulnerable_patch("login")
 
 func mission() -> Dictionary:
-    return missions[mini(current, missions.size() - 1)]
-
-func mark(key: String) -> void:
-    if current < missions.size() and key not in goals(): return
-    evidence[key] = true
-    var reward_id := str(current) + ":" + key
-    if current < missions.size() and reward_id not in earned_evidence:
-        earned_evidence.append(reward_id)
-        xp += 10
+	return missions[mini(current, missions.size() - 1)]
 
 func goals() -> Array:
-    return mission().criteria if current < missions.size() else []
+	return mission().get("criteria", []) if current < missions.size() else []
+
+func brief_current() -> void:
+	if current not in briefed:
+		briefed.append(current)
+		changed.emit()
+
+func mark(key: String) -> void:
+	if guided_mode and key == "attack": return
+	if current < missions.size() and key not in goals(): return
+	if evidence.has(key): return
+	evidence[key] = true
+	var reward_id := str(current) + ":" + key
+	if current < missions.size() and reward_id not in earned_evidence:
+		earned_evidence.append(reward_id)
+		xp += 10
+	changed.emit()
 
 func submit(kind: String, input: String, extra: String = "") -> Dictionary:
-    var result: Dictionary
-    var query := input
-    match kind:
-        "query":
-            result = db.execute(input, [], current >= missions.size() or mission().get("writable", false))
-            if result.ok:
-                if mission().has("target_record") and result.operation == "SELECT" and result.rows.size() == 1:
-                    var row: Dictionary = result.rows[0]
-                    var matches := true
-                    for column in mission().target_record:
-                        matches = matches and row.get(column) == mission().target_record[column]
-                    if matches: mark("found")
-                if result.operation == "UPDATE" and result.table == "incidentes":
-                    var solved := 0
-                    var required: Array = mission().get("resolved_ids", [1, 2])
-                    for row in db.tables.incidentes:
-                        if required.any(func(id): return int(id) == int(row.id)) and row.estado == "resuelto": solved += 1
-                    if solved == required.size(): mark("resolved")
-                if result.operation == "INSERT" and result.table == "incidentes":
-                    for row in result.rows:
-                        if row.estado == "certificado" and str(row.titulo).strip_edges().length() >= 5: mark("certificate")
-        "login":
-            query = "SELECT * FROM usuarios WHERE usuario = '%s' AND clave = '%s'" % [input, extra]
-            result = db.execute(query, [], false)
-            var literal := db.execute("SELECT * FROM usuarios WHERE usuario = ? AND clave = ?", [input, extra], false)
-            if result.ok:
-                if not result.rows.is_empty() and literal.rows.is_empty():
-                    mark("bypass"); last_attack = input
-                    result["message"] = "La entrada alteró WHERE: hubo acceso sin credenciales literales válidas. La concatenación mezcló datos con SQL."
-                elif not result.rows.is_empty():
-                    mark("valid")
-                    result["message"] = "Las credenciales coincidieron con una cuenta ficticia. Esta prueba legítima será necesaria para verificar la reparación."
-                else:
-                    mark("invalid")
-                    if evidence.has("bypass"): mark("negative")
-                    result["message"] = "No hubo coincidencias. Compara esta condición con la prueba anterior para explicar la diferencia."
-            else: mark("syntax")
-        "search":
-            query = "SELECT id, nombre FROM estudiantes WHERE nombre = '%s'" % input
-            result = db.execute(query, [], false)
-            if result.ok:
-                for row in result.rows:
-                    if "AURORA-42" in row.values():
-                        mark("leak")
-                        result["message"] = "El resultado incluye información ajena al directorio público. UNION amplió la proyección porque la entrada cambió la sentencia. Documenta esta evidencia."
-        "boolean", "time":
-            query = "SELECT id FROM documentos WHERE " + input
-            result = db.execute(query, [], false)
-            if result.ok:
-                var yes: bool = not result.rows.is_empty()
-                var investigates_content := false
-                for token in db.tokens:
-                    if token.kind == "word" and str(token.value).to_lower() == "contenido": investigates_content = true
-                if investigates_content:
-                    mark(("bool_" if kind == "boolean" else "time_") + ("yes" if yes else "no"))
-                result = {"ok": true, "rows": [], "columns": [], "error": "", "signal": yes,
-                    "message": ("Indicador: presente" if yes else "Indicador: ausente") if kind == "boolean" else ("Latencia virtual: 850 ms" if yes else "Latencia virtual: 40 ms")}
-                if not investigates_content: result.message += " · Para aportar evidencia, investiga la columna contenido; una constante no comprueba la hipótesis."
-        _: return {"ok": false, "error": "Acción desconocida.", "rows": [], "columns": []}
-    result["query"] = query
-    if not result.has("message"):
-        result["message"] = ("%d fila(s). Observa cómo cambió el filtro y compara otra entrada." % result.rows.size()) if result.ok else result.error
-    _record(kind, input, result)
-    changed.emit()
-    return result
+	var result: Dictionary
+	match kind:
+		"login": result = _login_attack(input, extra)
+		"search": result = _search_attack(input)
+		"order": result = _order_attack(input)
+		"blind": result = _blind_attack(input, extra)
+		_: result = _failure("Acción de laboratorio desconocida.")
+	if result.has("query"):
+		_record(kind, input, result)
+	changed.emit()
+	return result
+
+func submit_final(login_input: String, union_input: String, sort_input: String) -> Dictionary:
+	var previous_attack := evidence.has("attack")
+	var login := _login_attack(login_input, "x", false)
+	var union := _search_attack(union_input, false)
+	var order := _order_attack(sort_input, false)
+	var success := bool(login.get("attack", false)) and bool(union.get("attack", false)) and bool(order.get("attack", false))
+	if not success and not previous_attack: evidence.erase("attack")
+	if success: mark("attack")
+	var query := "LOGIN\n" + str(login.query) + "\n\nUNION SEARCH\n" + str(union.query) + "\n\nORDER BY\n" + str(order.query)
+	var message := "Cadena NullSec reproducida: bypass, exposición UNION y estructura ORDER BY fueron demostrados en el laboratorio aislado." if success else "La cadena está incompleta. Revisa cada superficie y vuelve a ejecutar la demostración."
+	var result := {"ok": success, "attack": success, "query": query, "rows": [], "columns": [], "error": "", "message": message,
+		"highlight": str(login.get("highlight", "")) + " | " + str(union.get("highlight", "")),
+		"input": "login=%s · union=%s · sort_by=%s" % [login_input, union_input, sort_input]}
+	_record("final", query, result)
+	changed.emit()
+	return result
+
+func _login_attack(user: String, password: String, record := true) -> Dictionary:
+	var query := "SELECT * FROM usuarios WHERE usuario = '%s' AND clave = '%s'" % [user, password]
+	var vulnerable := db.execute(query, [], false)
+	var safe := db.execute("SELECT * FROM usuarios WHERE usuario = ? AND clave = ?", [user, password], false)
+	var injected: bool = vulnerable.ok and not vulnerable.rows.is_empty() and safe.rows.is_empty()
+	var result := vulnerable
+	result["query"] = query
+	result["input"] = user + " / " + password
+	result["attack"] = injected
+	result["highlight"] = user if user.contains("'") or password.contains("'") else ""
+	result["message"] = "Acceso no autorizado: la entrada cerró el literal y -- anuló la comprobación de contraseña." if injected else ("Credenciales legítimas aceptadas en la simulación." if not vulnerable.rows.is_empty() else "Acceso rechazado. Compara la consulta con una entrada manipulada.")
+	if injected:
+		mark("attack")
+		last_attack = user
+	if record: _record("login", user + " / " + password, result)
+	return result
+
+func _search_attack(term: String, record := true) -> Dictionary:
+	var query := "SELECT id, name, price FROM products WHERE name LIKE '%%%s%%'" % term
+	var vulnerable := db.execute(query, [], false)
+	var safe := db.execute("SELECT id, name, price FROM products WHERE name LIKE ?", ["%" + term + "%"], false)
+	var exposed := false
+	for row in vulnerable.rows:
+		if row.values().any(func(value): return str(value).contains("AURORA-42") or str(value).contains("NULLSEC")): exposed = true
+	var result := vulnerable
+	result["query"] = query
+	result["input"] = term
+	result["attack"] = exposed and safe.rows.size() != vulnerable.rows.size()
+	result["highlight"] = term if term.contains("UNION") or term.contains("'") else ""
+	result["message"] = "Exposición no autorizada: UNION añadió una fila del vault sintético al buscador público." if result.attack else ("La búsqueda solo devuelve productos públicos." if vulnerable.ok else vulnerable.error)
+	if result.attack: mark("attack")
+	if record: _record("search", term, result)
+	return result
+
+func _order_attack(sort_by: String, record := true) -> Dictionary:
+	var query := "SELECT id, name, budget FROM projects ORDER BY " + sort_by
+	var suspicious := sort_by.to_lower().contains("case") or sort_by.to_lower().contains("when") or sort_by.contains(";") or sort_by.contains("--")
+	var result := {"ok": true, "rows": [], "columns": ["id", "name", "budget"], "error": "", "query": query,
+		"attack": suspicious, "highlight": sort_by, "input": sort_by, "message": "La expresión no autorizada altera la estructura del ordenamiento y puede actuar como sensor booleano." if suspicious else "La columna solicitada parece normal; prueba el caso controlado para observar la vulnerabilidad."}
+	if suspicious: mark("attack")
+	if record: _record("order", sort_by, result)
+	return result
+
+func _blind_attack(predicate: String, mode: String, record := true) -> Dictionary:
+	var query := "SELECT id FROM documentos WHERE " + predicate
+	var raw := db.execute(query, [], false)
+	var investigates_content := predicate.to_lower().contains("contenido")
+	var has_signal: bool = raw.ok and not raw.rows.is_empty()
+	var result := {"ok": raw.ok, "rows": [], "columns": [], "error": raw.error, "query": query, "attack": investigates_content,
+		"signal": has_signal, "highlight": predicate, "input": predicate, "message": "Señal booleana: PRESENTE · latencia virtual: 850 ms" if has_signal else "Señal booleana: AUSENTE · latencia virtual: 40 ms"}
+	if investigates_content: mark("attack")
+	if not investigates_content: result.message += "\nInvestiga contenido para demostrar una inferencia sobre datos, no una constante."
+	if record: _record("blind", predicate, result)
+	return result
+
+func _failure(message: String) -> Dictionary:
+	return {"ok": false, "rows": [], "columns": [], "error": message, "query": "", "message": message}
 
 func _record(kind: String, input: String, result: Dictionary) -> void:
-    history.append({"kind": kind, "input": input, "query": result.get("query", ""), "ok": result.ok, "message": result.get("message", result.get("error", ""))})
-    if history.size() > 60: history.pop_front()
+	history.append({"kind": kind, "input": input, "query": result.get("query", ""), "ok": result.get("ok", false), "message": result.get("message", result.get("error", ""))})
+	if history.size() > 40: history.pop_front()
 
 func hint() -> String:
-    var key := str(current)
-    var count := int(hints.get(key, 0))
-    hints[key] = mini(count + 1, 3)
-    changed.emit()
-    return mission().hints[mini(count, 2)]
+	var key := str(current)
+	var count := int(hints.get(key, 0))
+	hints[key] = mini(count + 1, 3)
+	changed.emit()
+	return mission().hints[mini(count, 2)]
 
 func save_report(body: String) -> bool:
-    if current >= missions.size(): return false
-    # This checks structured coverage; prose quality remains an instructor judgement.
-    var lower := body.to_lower()
-    var valid := body.strip_edges().length() >= 100 and lower.contains("evidencia:") and lower.contains("causa:") and lower.contains("corrección:")
-    valid = valid and (evidence.has("bypass") or evidence.has("leak"))
-    if valid:
-        for section in ["evidencia:", "causa:", "corrección:"]:
-            var line := lower.get_slice(section, 1).get_slice("\n", 0).strip_edges()
-            if line.length() < 15: valid = false
-    if valid:
-        reports[str(current)] = body
-        mark("report")
-    changed.emit()
-    return valid
+	if current >= missions.size(): return false
+	var lower := body.to_lower()
+	var valid := body.strip_edges().length() >= 100 and lower.contains("evidencia:") and lower.contains("causa:") and lower.contains("corrección:")
+	if valid:
+		reports[str(current)] = body
+		mark("report")
+	changed.emit()
+	return valid
 
-func test_patches() -> Array:
-    var isolated = SQL.new()
-    var output: Array = []
-    var login_ok := true
-    var access_ok := true
-    var cases := [
-        ["Credenciales legítimas", "nova", "nova123", [1]],
-        ["Segunda cuenta legítima", "admin", "supersecreto", [3]],
-        ["Clave incorrecta", "nova", "incorrecta", []],
-        ["Usuario inexistente", "nadie", "nova123", []],
-        ["Condición inyectada", "' OR 2=2 --", "x", []],
-        ["Comentario inyectado", "admin' --", "x", []],
-        ["Inyección en contraseña", "nadie", "' OR 1=1 --", []]]
-    for c in cases:
-        var r: Dictionary = isolated.execute(login_patch, [c[1], c[2]], false)
-        var ids: Array = []
-        for row in r.rows: ids.append(row.get("id"))
-        var passed: bool = r.ok and ids == c[3]
-        login_ok = login_ok and passed
-        output.append(("OK  " if passed else "FALLO  ") + c[0] + (" · " + r.error if not r.ok else ""))
-    for c in [["Documento propio", 1, 1, [1]], ["Segundo documento propio", 3, 1, [3]], ["Documento ajeno", 2, 1, []], ["Propietario legítimo", 2, 3, [2]], ["ID con inyección", "1 OR 1=1", 1, []]]:
-        var r: Dictionary = isolated.execute(document_patch, [c[1], c[2]], false)
-        var ids: Array = []
-        var has_content := true
-        for row in r.rows:
-            ids.append(row.get("id"))
-            has_content = has_content and row.has("titulo") and row.has("contenido")
-        var passed: bool = r.ok and ids == c[3] and has_content
-        access_ok = access_ok and passed
-        output.append(("OK  " if passed else "FALLO  ") + c[0] + (" · " + r.error if not r.ok else ""))
-    evidence.erase("login_fixed")
-    evidence.erase("access_fixed")
-    if login_ok: mark("login_fixed")
-    if access_ok: mark("access_fixed")
-    _record("regresión", login_patch + "\n" + document_patch, {"ok": login_ok and access_ok, "message": "\n".join(output)})
-    changed.emit()
-    return output
+func test_patches(code: String = "") -> Array:
+	if not code.is_empty(): patch_text = code
+	var kind: String = mission().get("kind", "login")
+	var output: Array = []
+	var valid := _patch_is_safe(kind, patch_text)
+	var tests := ["Patrón educativo de entrada legítima", "Separación de entrada manipulada", "Control esperado para este ejercicio"]
+	for label in tests: output.append(("OK  " if valid else "FALLO  ") + label)
+	if valid:
+		mark("defense")
+		output.append("PATRÓN RECONOCIDO · simulación educativa; el código no se ejecutó")
+	_record("defense", patch_text, {"ok": valid, "message": "\n".join(output), "query": patch_text})
+	changed.emit()
+	return output
+
+func _patch_is_safe(kind: String, code: String) -> bool:
+	var text := code.to_lower()
+	match kind:
+		"login": return text.contains("cursor.execute") and text.count("?") >= 2 and not text.contains("+ username") and not text.contains("+ password")
+		"search": return text.contains("cursor.execute") and text.contains("like ?") and text.contains("%{search}%") and not text.contains("+ search")
+		"order": return text.contains("allowed_columns") and text.contains("get(sort_by") and text.contains("\"id\"") and not text.contains("+ sort_by")
+		"blind": return text.contains("cursor.execute") and text.count("?") >= 2 and text.contains("authorized_user_id") and not text.contains("+ probe")
+		"final": return _patch_is_safe("login", code) and _patch_is_safe("search", code) and _patch_is_safe("order", code)
+	return false
 
 func can_complete() -> bool:
-    if current >= missions.size(): return false
-    for key in goals():
-        if not evidence.has(key): return false
-    return true
+	if current >= missions.size(): return false
+	for key in goals():
+		if not evidence.has(key): return false
+	return true
 
 func complete() -> bool:
-    if not can_complete(): return false
-    var earned: int = mission().xp
-    var index := current
-    completed.append(index)
-    xp += earned
-    current += 1
-    evidence.clear()
-    history.clear()
-    db.reset_data()
-    login_patch = "SELECT * FROM usuarios WHERE usuario = 'entrada' AND clave = 'entrada'"
-    document_patch = "SELECT id, titulo, contenido FROM documentos WHERE id = 1"
-    mission_completed.emit(index, earned)
-    changed.emit()
-    return true
+	if not can_complete(): return false
+	var earned: int = mission().xp
+	var index := current
+	completed.append(index)
+	xp += earned
+	current += 1
+	evidence.clear()
+	history.clear()
+	patch_text = _vulnerable_patch(mission().get("kind", "login") if current < missions.size() else "login")
+	db.reset_data()
+	mission_completed.emit(index, earned)
+	changed.emit()
+	return true
 
 func reset_lab() -> void:
-    db.reset_data()
-    evidence.clear()
-    history.clear()
-    changed.emit()
+	db.reset_data()
+	evidence.clear()
+	history.clear()
+	patch_text = _vulnerable_patch(mission().get("kind", "login"))
+	changed.emit()
+
+func _default_patch(kind: String) -> String:
+	match kind:
+		"login": return "cursor.execute(\n    \"SELECT * FROM users WHERE user = ? AND pass = ?\",\n    (username, password)\n)"
+		"search": return "query = \"SELECT id, name, price FROM products WHERE name LIKE ?\"\ncursor.execute(query, (f\"%{search}%\",))"
+		"order": return "ALLOWED_COLUMNS = {\n    \"id\": \"id\",\n    \"name\": \"name\",\n    \"budget\": \"budget\"\n}\ncolumn = ALLOWED_COLUMNS.get(sort_by, \"id\")\nquery = f\"SELECT * FROM projects ORDER BY {column}\""
+		"blind": return "cursor.execute(\n    \"SELECT id FROM documents WHERE id = ? AND owner_id = ?\",\n    (probe, authorized_user_id)\n)"
+		"final": return _default_patch("login") + "\n\n" + _default_patch("search") + "\n\n" + _default_patch("order")
+	return ""
+
+func _vulnerable_patch(kind: String) -> String:
+	match kind:
+		"login": return "query = \"SELECT * FROM users WHERE user = '\" + username + \"' AND pass = '\" + password + \"'\"\ncursor.execute(query)"
+		"search": return "query = \"SELECT id, name, price FROM products WHERE name LIKE '%\" + search + \"%'\"\ncursor.execute(query)"
+		"order": return "query = \"SELECT * FROM projects ORDER BY \" + sort_by\ncursor.execute(query)"
+		"blind": return "query = \"SELECT id FROM documents WHERE id = \" + probe + \" AND owner_id = \" + authorized_user_id\ncursor.execute(query)"
+		"final": return _vulnerable_patch("login") + "\n\n" + _vulnerable_patch("search") + "\n\n" + _vulnerable_patch("order")
+	return ""
 
 func collect(id: int) -> bool:
-    if id in collected: return false
-    collected.append(id)
-    xp += 25
-    changed.emit()
-    return true
+	if id in collected: return false
+	collected.append(id)
+	xp += 25
+	changed.emit()
+	return true
 
 func rank_name() -> String:
-    return "Estudiante principiante" if current == 0 else str(missions[mini(current - 1, missions.size() - 1)].rank)
+	return "Auditor en entrenamiento" if current == 0 else str(missions[mini(current - 1, missions.size() - 1)].rank)
 
 func serialize() -> Dictionary:
-    return {"current": current, "xp": xp, "completed": completed, "evidence": evidence, "hints": hints,
-        "history": history, "reports": reports, "collected": collected, "earned_evidence": earned_evidence, "tables": db.tables,
-        "login_patch": login_patch, "document_patch": document_patch}
+	return {"current": current, "xp": xp, "completed": completed, "evidence": evidence, "hints": hints, "history": history,
+		"reports": reports, "collected": collected, "earned_evidence": earned_evidence, "briefed": briefed, "tables": db.tables, "patch_text": patch_text, "lessons": lessons}
 
 func restore(data: Dictionary) -> void:
-    current = clampi(int(data.get("current", 0)), 0, missions.size())
-    xp = maxi(0, int(data.get("xp", 0)))
-    completed = []
-    for value in data.get("completed", []): completed.append(int(value))
-    evidence = data.get("evidence", {})
-    hints = data.get("hints", {})
-    history = data.get("history", [])
-    reports = data.get("reports", {})
-    collected = []
-    for value in data.get("collected", []): collected.append(int(value))
-    earned_evidence = data.get("earned_evidence", [])
-    db.tables = data.get("tables", db.tables)
-    login_patch = data.get("login_patch", login_patch)
-    document_patch = data.get("document_patch", document_patch)
-    changed.emit()
+	current = clampi(int(data.get("current", 0)), 0, missions.size())
+	xp = maxi(0, int(data.get("xp", 0)))
+	completed = []
+	for value in data.get("completed", []): completed.append(int(value))
+	evidence = data.get("evidence", {})
+	hints = data.get("hints", {})
+	history = data.get("history", [])
+	reports = data.get("reports", {})
+	lessons = data.get("lessons", {})
+	collected = []
+	for value in data.get("collected", []): collected.append(int(value))
+	earned_evidence = data.get("earned_evidence", [])
+	briefed = []
+	for value in data.get("briefed", []): briefed.append(int(value))
+	db.tables = data.get("tables", db.tables)
+	patch_text = str(data.get("patch_text", _vulnerable_patch(mission().get("kind", "login") if current < missions.size() else "login")))
+	changed.emit()

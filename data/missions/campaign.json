@@ -1,255 +1,102 @@
 [
   {
-    "title": "Primer día en CyberAcademy",
+    "title": "SQL Injection en Login",
     "room": 2,
     "mentor": "Profesor Byte",
-    "rank": "Aprendiz de bases de datos",
-    "badge": "Explorador SQL",
-    "objective": "Localiza únicamente el registro de Nova en estudiantes. Incluye id y nombre en el resultado.",
-    "lesson": "SELECT elige columnas, FROM indica una tabla y WHERE filtra filas. Empieza inspeccionando el esquema y experimenta con una lectura pequeña.",
-    "hints": [
-      "Busca la tabla estudiantes en Esquema.",
-      "WHERE compara una columna con un valor. El texto lleva comillas simples.",
-      "Filtra por nombre o por id. Debe aparecer solo Nova, con su id y nombre."
-    ],
-    "goals": [
-      "Encontrar a Nova con una consulta"
-    ],
+    "rank": "Auditor de autenticación",
+    "badge": "Guardia del Login",
+    "kind": "login",
     "xp": 150,
-    "criteria": [
-      "found"
+    "objective": "Demuestra cómo admin' -- puede anular la contraseña y corrige la autenticación con parámetros.",
+    "lesson": "Una SQL Injection ocurre cuando datos no confiables se concatenan dentro de la estructura SQL. La comilla cierra el dato y el comentario -- elimina el resto de la condición.",
+    "example": "VULNERABLE\nquery = \"SELECT * FROM users WHERE user = '\" + username + \"' AND pass = '\" + password + \"'\"\n\nENTRADA\nadmin' --\n\nDEFENSA\ncursor.execute(\"SELECT * FROM users WHERE user = ? AND pass = ?\", (username, password))",
+    "hints": [
+      "Observa la consulta construida y busca el punto donde la entrada cierra una comilla.",
+      "El comentario SQL -- hace que la contraseña deje de participar en la condición vulnerable.",
+      "La defensa debe usar cursor.execute con dos marcadores ? y una tupla de valores separados."
     ],
-    "tools": [
-      "query"
-    ],
-    "writable": false,
-    "target_record": {
-      "id": 2,
-      "nombre": "Nova"
-    }
+    "goals": ["Bypass reproducido", "Parche de login verificado"],
+    "criteria": ["attack", "defense"],
+    "tools": ["login", "patch"]
   },
   {
-    "title": "El sistema de inicio de sesión",
+    "title": "UNION SQL Injection en Búsqueda",
     "room": 3,
     "mentor": "Profesor Byte",
-    "rank": "Analista de seguridad junior",
-    "badge": "Lector de consultas",
-    "objective": "Comprueba un login válido (nova / nova123), otro inválido y provoca un error de sintaxis para localizar la concatenación.",
-    "lesson": "El login inserta usuario y clave entre comillas. Sigue Entrada → consulta → resultado. Un error puede revelar que un dato está cambiando la estructura SQL.",
+    "rank": "Analista de exposición",
+    "badge": "Detector UNION",
+    "kind": "search",
+    "xp": 200,
+    "objective": "Investiga cómo una búsqueda vulnerable expone el vault sintético y protégela con LIKE parametrizado.",
+    "lesson": "UNION combina resultados compatibles. Si el buscador concatena el término, una entrada puede cerrar el literal LIKE y añadir columnas que nunca fueron autorizadas.",
+    "example": "VULNERABLE\nSELECT id, name, price FROM products WHERE name LIKE '%' + search + '%'\n\nATAQUE SIMULADO\n' UNION SELECT id, secret, 0 FROM vault --\n\nDEFENSA\ncursor.execute(query, (f\"%{search}%\",))",
     "hints": [
-      "Prueba las credenciales de demostración y luego una clave equivocada.",
-      "Observa las comillas que rodean cada campo en la consulta construida.",
-      "Investiga qué ocurre si un campo contiene una comilla simple sin pareja."
+      "El buscador devuelve tres columnas; el UNION sintético debe respetar esa forma.",
+      "Cierra el literal de búsqueda y comenta el sufijo original para observar la exposición.",
+      "Los comodines % deben viajar dentro del valor del parámetro, nunca concatenados en SQL."
     ],
-    "goals": [
-      "Login legítimo",
-      "Rechazo de clave incorrecta",
-      "Evidencia de concatenación"
-    ],
-    "xp": 180,
-    "criteria": [
-      "valid",
-      "invalid",
-      "syntax"
-    ],
-    "tools": [
-      "login"
-    ],
-    "writable": false
+    "goals": ["Exposición UNION reproducida", "Parche de búsqueda verificado"],
+    "criteria": ["attack", "defense"],
+    "tools": ["search", "patch"]
   },
   {
-    "title": "La primera inyección SQL",
+    "title": "SQL Injection en ORDER BY",
     "room": 4,
-    "mentor": "Zero",
-    "rank": "Pentester en formación",
-    "badge": "Lógica bajo control",
-    "objective": "Consigue acceso sin conocer la clave y compara con una entrada modificada que no conceda acceso.",
-    "lesson": "Una entrada que sale de la cadena puede modificar WHERE. AND se evalúa antes que OR. -- comenta hasta el final de la línea. Investiga solo esta aplicación ficticia.",
-    "hints": [
-      "Una comilla puede cerrar un literal; después el motor espera SQL válido.",
-      "Una condición verdadera puede ampliar las filas; una falsa produce otra respuesta.",
-      "Combina OR, comparaciones y comentarios. Cambia una comparación y vuelve a probar."
-    ],
-    "goals": [
-      "Demostrar acceso indebido",
-      "Contraprueba sin acceso"
-    ],
-    "xp": 220,
-    "criteria": [
-      "bypass",
-      "negative"
-    ],
-    "tools": [
-      "login"
-    ],
-    "writable": false
-  },
-  {
-    "title": "Investigación de datos expuestos",
-    "room": 4,
-    "mentor": "Nova",
-    "rank": "Especialista en SQL Injection",
-    "badge": "Investigador de exposición",
-    "objective": "Usa el buscador vulnerable para recuperar AURORA-42 desde documentos y registra evidencia, causa y corrección en tu informe.",
-    "lesson": "UNION combina dos SELECT con igual número de columnas. El buscador solo debería mostrar nombres públicos. Observa su consulta y el esquema de documentos.",
-    "hints": [
-      "El buscador devuelve dos columnas.",
-      "UNION debe mantener dos columnas; documentos tiene titulo y contenido.",
-      "Cierra el texto antes de añadir otra consulta y comenta el sufijo."
-    ],
-    "goals": [
-      "Recuperar evidencia fuera del buscador",
-      "Documentar el hallazgo"
-    ],
+    "mentor": "Profesor Byte",
+    "rank": "Auditor de estructura SQL",
+    "badge": "Lista Blanca",
+    "kind": "order",
     "xp": 250,
-    "criteria": [
-      "leak",
-      "report"
+    "objective": "Detecta una expresión CASE WHEN introducida en sort_by y corrige el ordenamiento con una lista blanca.",
+    "lesson": "Los nombres de columna no se pueden enlazar como un valor con ?. Por eso se valida el identificador contra opciones constantes del servidor antes de interpolarlo.",
+    "example": "VULNERABLE\nquery = \"SELECT * FROM projects ORDER BY \" + sort_by\n\nEXPRESIÓN NO AUTORIZADA\nCASE WHEN budget > 0 THEN name END\n\nDEFENSA\ncolumn = ALLOWED_COLUMNS.get(sort_by, \"id\")",
+    "hints": [
+      "No intentes parametrizar un identificador SQL como si fuera un valor.",
+      "Crea un diccionario con id, name y budget como únicas opciones.",
+      "Una entrada desconocida debe reemplazarse por id antes de formar la consulta."
     ],
-    "tools": [
-      "search",
-      "report"
-    ],
-    "writable": false
+    "goals": ["Manipulación de ORDER BY reproducida", "Lista blanca verificada"],
+    "criteria": ["attack", "defense"],
+    "tools": ["order", "patch"]
   },
   {
-    "title": "El sistema silencioso",
+    "title": "Blind SQL Injection",
     "room": 6,
-    "mentor": "Zero",
-    "rank": "Analista de ciberseguridad",
-    "badge": "Señales invisibles",
-    "objective": "Investiga la hipótesis de un contenido con prefijo AURORA. Compara condiciones verdadera y falsa con ambos sensores.",
-    "lesson": "El sensor oculta las filas: solo muestra presencia o latencia virtual. Es un modelo de inferencia ciega; no ejecuta SLEEP ni causa esperas reales. El prefijo AURORA es una hipótesis proporcionada por Zero.",
-    "hints": [
-      "Escribe una condición WHERE sobre documentos, sin SELECT.",
-      "LIKE admite % para cualquier secuencia. Compara un prefijo plausible y uno imposible.",
-      "Obtén señales diferentes en el sensor booleano y en el temporal."
-    ],
-    "goals": [
-      "Señal positiva",
-      "Señal negativa",
-      "Latencia virtual alta",
-      "Latencia virtual baja"
-    ],
-    "xp": 280,
-    "criteria": [
-      "bool_yes",
-      "bool_no",
-      "time_yes",
-      "time_no"
-    ],
-    "tools": [
-      "sensors"
-    ],
-    "writable": false
-  },
-  {
-    "title": "Reparando vulnerabilidades",
-    "room": 3,
     "mentor": "Profesor Byte",
-    "rank": "Experto en seguridad de aplicaciones",
-    "badge": "Constructor de defensas",
-    "objective": "Edita las consultas de login y documentos con parámetros. Supera las pruebas conservando acceso legítimo sin exponer datos ajenos.",
-    "lesson": "Login recibe [usuario, clave]; documentos recibe [id solicitado, id de sesión]. Cada ? recibe un valor separado. owner_id debe coincidir con la sesión, nunca con una identidad enviada por el cliente. Validar entrada no reemplaza parametrizar.",
+    "rank": "Analista de señales laterales",
+    "badge": "Radar Blind",
+    "kind": "blind",
+    "xp": 300,
+    "objective": "Interpreta respuestas booleanas y tiempos virtuales para demostrar una inyección ciega y corta la inferencia.",
+    "lesson": "Una aplicación puede ocultar sus filas y seguir filtrando información: un estado distinto o una latencia simulada permiten inferir si una condición es verdadera.",
+    "example": "RESPUESTA VISIBLE\nstatus = 200 / status = 404\nlatencia = 850 ms / 40 ms\n\nLa simulación no ejecuta SLEEP ni consulta ningún servidor real.",
     "hints": [
-      "Edita las dos sentencias en Reparación y ejecuta la batería.",
-      "El login necesita usuario y clave. No pongas ? entre comillas.",
-      "Documentos necesita id y owner_id. Las pruebas indican qué comportamiento falló."
+      "No esperes ver el documento: observa el indicador booleano y la latencia virtual.",
+      "Investiga la columna contenido con una condición verdadera y otra imposible.",
+      "La defensa combina parámetros con autorización basada en authorized_user_id."
     ],
-    "goals": [
-      "Regresión de login superada",
-      "Autorización por propietario superada"
-    ],
-    "xp": 320,
-    "criteria": [
-      "login_fixed",
-      "access_fixed"
-    ],
-    "tools": [
-      "patch"
-    ],
-    "writable": false
+    "goals": ["Señal ciega reproducida", "Parche blind verificado"],
+    "criteria": ["attack", "defense"],
+    "tools": ["blind", "patch"]
   },
   {
-    "title": "Primera práctica profesional",
-    "room": 5,
-    "mentor": "Director Kernel",
-    "rank": "Consultor de aplicaciones",
-    "badge": "Primera experiencia",
-    "objective": "Investiga login y búsqueda, repara ambos controles y entrega un informe. Marca los dos incidentes como resuelto mediante UPDATE.",
-    "lesson": "Una entrega profesional combina evidencia, impacto, reparación y regresión. El estado del incidente debe reflejar pruebas verificadas.",
-    "hints": [
-      "Reproduce un acceso indebido y una exposición de documentos.",
-      "Reparación comprueba accesos válidos, ataques y acceso entre cuentas.",
-      "UPDATE requiere SET y un filtro WHERE. Adjunta evidencia, causa y corrección."
-    ],
-    "goals": [
-      "Bypass reproducido",
-      "Exposición reproducida",
-      "Login reparado",
-      "Acceso reparado",
-      "Informe técnico",
-      "Incidentes resueltos"
-    ],
-    "xp": 380,
-    "criteria": [
-      "bypass",
-      "leak",
-      "login_fixed",
-      "access_fixed",
-      "report",
-      "resolved"
-    ],
-    "tools": [
-      "query",
-      "login",
-      "search",
-      "patch",
-      "report"
-    ],
-    "writable": true,
-    "resolved_ids": [
-      1,
-      2
-    ]
-  },
-  {
-    "title": "El trabajo de tus sueños",
+    "title": "NullSec · ataque y defensa final",
     "room": 7,
-    "mentor": "Alex",
-    "rank": "Cyber Hero · contratado",
-    "badge": "Certificación Cyber Hero",
-    "objective": "Demuestra dos vulnerabilidades, corrige los controles, valida y entrega un informe. Crea un registro nuevo en incidentes con título descriptivo y estado certificado mediante INSERT.",
-    "lesson": "Alex: «Tu entrevista es práctica. Muéstrame cómo investigas, cómo corriges y cómo sabes que funciona. Usa exclusivamente este entorno ficticio». Demuestra todo lo aprendido para conseguir el empleo.",
-    "hints": [
-      "Repite tu metodología de investigación.",
-      "Rechazar todo no es una reparación: las pruebas legítimas deben pasar.",
-      "INSERT INTO necesita columnas y VALUES. Usa un id nuevo y estado certificado."
-    ],
-    "goals": [
-      "Acceso indebido demostrado",
-      "Exposición demostrada",
-      "Login protegido",
-      "Autorización validada",
-      "Informe de entrevista",
-      "Registro de certificación"
-    ],
+    "mentor": "Profesor Byte",
+    "rank": "Especialista en seguridad web",
+    "badge": "Certificación SQL Defender",
+    "kind": "final",
     "xp": 500,
-    "criteria": [
-      "bypass",
-      "leak",
-      "login_fixed",
-      "access_fixed",
-      "report",
-      "certificate"
+    "objective": "El equipo rival NullSec desafía a CyberAcademy: demuestra login, UNION y ORDER BY, aplica la defensa integral y entrega el reporte.",
+    "lesson": "NullSec dejó una cadena de entradas manipuladas. Investiga solo los sistemas autorizados de la competición, conserva evidencia y demuestra que tus parches mantienen el comportamiento legítimo.",
+    "example": "NULLSEC // INCIDENTE AUTORIZADO\n1. Bypass de autenticación\n2. Exposición UNION\n3. Ordenamiento manipulable\n\nOBJETIVO: aislar datos, validar estructura y ejecutar regresiones.",
+    "hints": [
+      "Ejecuta la demostración final y compara las tres superficies vulnerables.",
+      "El parche debe contener parámetros, LIKE con comodines en el valor y ALLOWED_COLUMNS.",
+      "El reporte debe incluir Evidencia:, Causa: y Corrección: con al menos 100 caracteres."
     ],
-    "tools": [
-      "query",
-      "login",
-      "search",
-      "patch",
-      "report"
-    ],
-    "writable": true
+    "goals": ["Cadena de ataque documentada", "Defensa integral verificada", "Reporte de certificación"],
+    "criteria": ["attack", "defense", "report"],
+    "tools": ["final", "patch", "report"]
   }
 ]

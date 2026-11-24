@@ -1,119 +1,92 @@
-# SQL QUEST: FROM ZERO TO CYBER HERO
+# SQL Quest: CyberGuard · SQL Injection RPG
 
-Aventura educativa **jugable en Godot 4.3+**, escrita en GDScript. Explora CyberAcademy, escribe SQL, investiga aplicaciones ficticias, repara consultas y supera una entrevista práctica. La campaña principal tiene **ocho misiones, sin cuestionarios ni respuestas de selección múltiple**.
+SQL Quest es un videojuego educativo 2D para Godot 4. El jugador recorre la academia CyberAcademy como auditor de seguridad, recibe misiones del Profesor Byte y entra en laboratorios simulados para demostrar y corregir **SQL Injection**.
 
-## Jugar
+El mundo RPG se conserva: hay exploración, colisiones, NPCs, terminales, zonas bloqueadas, diálogos y desbloqueos. El laboratorio aparece como una estación de ciberseguridad dentro de ese mundo, no como la escena principal.
 
-1. Abre [project.godot](project.godot) con Godot 4.3 o posterior.
-2. Pulsa **F5** y elige **Nueva aventura**.
-3. Escucha a Byte, camina hacia la terminal iluminada y pulsa **E**.
-4. Inspecciona **Esquema**, escribe una consulta y observa la entrada, la consulta construida, las filas y la explicación.
-5. Entrega la misión cuando sus evidencias estén completas. La recompensa abre el siguiente destino.
+## Objetivo educativo
 
-También puedes ejecutar `godot --path .`. No se necesitan plugins, SQLite, cuentas ni conexión a internet.
+Al finalizar, el estudiante puede:
 
-Jugar en Web: <https://voidxgongy.github.io/sql-quest-from-zero-to-cyber-hero/>.
+- explicar cómo la concatenación mezcla datos de usuario con estructura SQL;
+- demostrar un bypass de login con `admin' --` en un entorno aislado;
+- reconocer una exposición por `UNION` y una inyección de identificadores en `ORDER BY`;
+- interpretar señales indirectas de una SQL Injection ciega;
+- reemplazar concatenación por parámetros y aplicar listas blancas;
+- comprobar el parche con pruebas legítimas, manipuladas y de autorización;
+- redactar un reporte técnico de evidencia, causa y corrección.
 
-Para probar la versión web, exporta con el preset **Web** y sirve la carpeta por HTTP (no abras `index.html` con `file://`):
+## Recorrido de cinco misiones
+
+| Nivel | Incidente | Ataque simulado | Defensa práctica |
+|---|---|---|---|
+| 1 | Login | `admin' --` anula la comprobación de contraseña | `cursor.execute(..., (?, ?))` |
+| 2 | Búsqueda | `UNION` expone datos sintéticos del vault | `LIKE ?` con `%` dentro del valor |
+| 3 | `ORDER BY` | `CASE WHEN` altera una estructura dinámica | `ALLOWED_COLUMNS` y valor por defecto |
+| 4 | Blind | señales booleanas y latencia virtual | parámetros, autorización y mínimo privilegio |
+| 5 | Incidente NullSec | combina login, UNION y ORDER BY | defensa integral, pruebas y reporte final |
+
+Todas siguen el ciclo: briefing de Byte → explicación visual → demostración → experimentación → análisis del impacto → edición del código → regresión → recompensa. No hay niveles obligatorios de SELECT básico, creación de tablas, XSS, comandos o SSTI.
+
+## Ejecución local
+
+Requisito: Godot 4.7.x (o una versión 4.x compatible). No se requieren plugins, servidor, Python ni una base de datos externa.
+
+```bash
+godot --path .
+```
+
+La entrada del proyecto es `scenes/main.tscn`. En el mundo se usan `WASD` o flechas para caminar y `E` para hablar o usar una terminal. El laboratorio también se cierra con `Esc`.
+
+## Exportación Web
+
+El preset `Web` está en `export_presets.cfg`, usa Compatibility, desactiva hilos y mantiene la simulación dentro de GDScript.
 
 ```bash
 godot --headless --path . --export-release "Web" build/web/index.html
 python3 -m http.server 8080 --directory build/web
 ```
 
-Abre `http://localhost:8080/`. El preset no usa hilos para evitar requisitos de aislamiento de origen al probar en local.
+Abre `http://127.0.0.1:8080/`. No pruebes la exportación con `file://`: el cargador WebAssembly necesita servirse por HTTP. La carpeta `build/web/` debe regenerarse cuando cambie la versión de Godot o el código.
 
-| Control | Acción |
-|---|---|
-| WASD / flechas | Movimiento en cuatro direcciones |
-| E | Hablar, usar terminal, recoger chip o cruzar puerta |
-| E / Espacio | Completar texto y avanzar diálogo |
-| Esc | Cerrar laboratorio/panel o abrir pausa |
-| J | Diario y objetivo actual |
-| Tab | Mapa, destinos y viaje rápido desbloqueado |
-| P / I / K | Perfil, inventario y conocimientos |
-| Ctrl+Enter | Ejecutar la herramienta actual del laboratorio |
+### Publicación estática
 
-La terminal de una misión se habilita en su destino. Puedes llegar por las puertas laterales o mediante el mapa. Los chips son opcionales. Los errores no restan XP. El instructor acompaña cada prueba: explica errores comunes, recuerda la evidencia pendiente y ofrece tres pistas progresivas. Pedir ayuda no reduce la recompensa.
+- **Netlify:** carga `build/web/` con Deploy manually o configura el comando de exportación anterior y `build/web` como publish directory.
+- **Cloudflare Pages:** usa Direct Upload con `build/web/`, o conecta Git con el mismo comando de build y directorio de salida.
+- **GitHub Pages:** publica el contenido de `build/web/` en `gh-pages` o como Pages artifact. Conserva `index.html`, `.wasm`, `.pck`, `.js` y los worklets de audio juntos.
 
-## La campaña
+No se afirma una URL pública: esta entrega no tiene credenciales de despliegue ni una publicación externa verificada.
 
-| Misión | Trabajo práctico | Destino |
-|---|---|---|
-| Primer día | SELECT y WHERE: obtener solo un registro, con soluciones equivalentes | CyberAcademy |
-| Inicio de sesión | Comparar login válido, inválido y error de concatenación | Laboratorio de bases de datos |
-| Primera inyección | Demostrar acceso indebido y una contraprueba sin acceso | Simulaciones |
-| Datos expuestos | Recuperar información fuera del buscador usando UNION y documentarla | Simulaciones |
-| Sistema silencioso | Contrastar hipótesis sobre contenido mediante dos sensores | SOC |
-| Reparación | Editar dos consultas y superar pruebas de parametrización y autorización | Laboratorio de bases de datos |
-| Práctica profesional | Reproducir, reparar, documentar y actualizar incidentes con UPDATE | Empresa |
-| Entrevista | Auditoría integral y registro de certificación mediante INSERT | Oficina de entrevistas |
+## Arquitectura
 
-La casa y la universidad son espacios opcionales de exploración. Al terminar, recibes certificación, contratación y **práctica libre en todas las terminales**.
+- `scenes/main.tscn`: escena raíz RPG.
+- `scripts/game.gd`: mundo, HUD, diálogos, interacción, transiciones y apertura del laboratorio.
+- `scripts/player/hero.gd`: movimiento, orientación e idle/walk con `AnimatedSprite2D` y filtrado nearest.
+- `scripts/world/academy.gd`: salas, NPCs, terminales, colisiones y zonas desbloqueables.
+- `scripts/missions/campaign.gd`: progresión, puntuación, evidencias, parches y simulaciones de cinco niveles.
+- `scripts/ui/quest_lab.gd`: laboratorio responsive de cuatro paneles: ataque, consulta, impacto y arreglo/regresión.
+- `scripts/sql_simulator/query_engine.gd`: intérprete acotado en memoria con datos ficticios.
+- `data/missions/campaign.json`: contenido educativo de las cinco misiones SQL Injection.
+- `tests/`: regresiones del simulador, campaña y flujo RPG.
 
-Se obtienen 10 XP por evidencia nueva, 25 XP por chip y la recompensa de cada misión. Las pistas no reducen XP ni recompensas. Reiniciar el laboratorio no permite repetir XP por evidencias. El perfil conserva insignias, rango profesional e informes.
+La carpeta `assets/` contiene los recursos pixel-art existentes. La hoja del protagonista se interpreta con filas verificadas: frente, lateral y espalda; la derecha usa `flip_h` únicamente sobre la fila lateral.
 
-## Sistemas incluidos
+## Programación segura
 
-- Ocho interiores conectados con distribución y decoración distintas, colisiones por cuadrícula, cámara suave, puertas, fondos ilustrados ajustados al lienzo, pantallas animadas y partículas. Casa y campus conservan sus murales; las imágenes no definen automáticamente colisiones.
-- Personajes pixel art del paquete gráfico: marcha del protagonista en cuatro cuadros con vistas frontal, lateral y trasera; animaciones de NPC; retratos del Profesor Byte, Nova y Zero. El estado de reposo conserva una respiración suave.
-- Menú, diálogos progresivos con retrato del hablante, marcos e iconos pixel art, lección inicial de SELECT/WHERE con consulta y resultados demostrativos, diario, mapa con viaje rápido, inventario, perfil, biblioteca y notificaciones.
-- Laboratorio con editor SQL, esquema, login, buscador, sensores, edición de consultas de defensa, pruebas de regresión, informes, historial y tres pistas por misión.
-- Seis ambientes musicales originales sintetizados localmente, transición por fundido y efectos de pasos, teclado, puertas, error y recompensa.
-- Volúmenes independientes; opción de reducir movimiento y mostrar diálogos inmediatamente.
-- Guardado automático al ejecutar pruebas, cerrar terminales, entregar misiones, viajar y cada 25 segundos; guardado manual y al salir. Copia de respaldo y recuperación de partidas dañadas.
+El código Python mostrado es contenido pedagógico y nunca se ejecuta dentro del navegador. En un sistema real, parametrizar consultas debe acompañarse de autorización, mínimo privilegio, gestión de secretos, logging seguro y hashing de contraseñas. Los identificadores dinámicos no se parametrizan como valores: se seleccionan desde constantes del servidor mediante lista blanca.
 
-La interfaz usa un lienzo lógico de 1152×720 con escalado proporcional y bandas cuando cambia la relación de aspecto. Los paneles largos tienen desplazamiento. Las ventanas pequeñas conservan la composición; no hay diseño específico para móvil.
+El laboratorio es deliberadamente aislado. No ejecuta SQL externo, no inicia procesos, no evalúa Python y no contiene datos reales.
 
-## SQL y precisión educativa
+## IA generativa, arte y créditos
 
-El [intérprete](scripts/sql_simulator/query_engine.gd) tokeniza y evalúa árboles de expresiones. No usa `eval`, comandos del sistema, red ni una base externa. Admite SELECT, WHERE, AND/OR/NOT, comparaciones, LIKE, paréntesis, ORDER BY, LIMIT, UNION/UNION ALL, INSERT, UPDATE y parámetros `?`.
-
-Los datos son inventados y restaurables. Se rechazan sentencias encadenadas, operaciones fuera del subconjunto, columnas desconocidas y tipos incorrectos. Una operación fallida revierte sus cambios. Los parámetros nunca vuelven a tokenizarse como SQL. Una cadena que contiene `OR 1=1` sigue siendo texto si sus comillas no se han cerrado.
-
-**Límites explícitos:** no es un DBMS completo: no hay JOIN, subconsultas, NULL, funciones, DDL ni transacciones SQL. El sensor temporal representa un canal lateral con latencias virtuales, sin ejecutar SLEEP. Las claves visibles simplifican la lección: una aplicación real almacena hashes y verifica contraseñas adecuadamente. El informe se valida por estructura y evidencia capturada; su calidad técnica requiere revisión humana. Las pruebas de reparación verifican un conjunto de casos, no constituyen una demostración formal para todas las entradas.
-
-## Guardado
-
-Godot guarda `sql_quest_v2.json`, su respaldo `.bak` y `settings.cfg` en el directorio `user://` del juego. En Linux normalmente corresponde a `~/.local/share/godot/app_userdata/SQL Quest: From Zero to Cyber Hero/`; en Windows, a `%APPDATA%/Godot/app_userdata/SQL Quest: From Zero to Cyber Hero/`.
-
-Se conserva progreso, datos de laboratorio, evidencias, historial reciente, pistas, consultas de reparación, informes entregados, chips, posición y configuración. Hay un slot; empezar de nuevo pide confirmación. El borrador de un informe todavía no entregado y la consulta actual del editor no se guardan; las consultas ejecutadas sí quedan en el historial.
-
-## Estructura y reutilización
-
-- [scenes/main.tscn](scenes/main.tscn): entrada del juego.
-- [scripts/game.gd](scripts/game.gd): coordinación de escenas, menús y navegación.
-- [scripts/world/academy.gd](scripts/world/academy.gd) y [scripts/player/hero.gd](scripts/player/hero.gd): mundo y estados del protagonista.
-- [scripts/ui/quest_lab.gd](scripts/ui/quest_lab.gd): laboratorio de campaña.
-- [scripts/missions/campaign.gd](scripts/missions/campaign.gd): evidencias, evaluación y recompensas.
-- [data/missions/campaign.json](data/missions/campaign.json): contenido, herramientas, criterios y objetivos de las misiones.
-- [scripts/save_system/save_store.gd](scripts/save_system/save_store.gd) y [scripts/audio/quest_audio.gd](scripts/audio/quest_audio.gd): persistencia y audio.
-- [assets/](assets/): paquete importado con spritesheets, retratos, fondos ilustrados, paneles, efectos, manifiesto, atlas de mobiliario y fuente con su licencia. Las colisiones se construyen y prueban aparte de las ilustraciones.
-- [tools/make_art.py](tools/make_art.py): fuente reproducible del pixel art SVG; no hace falta Python para jugar.
-
-Se conservó la escena de entrada, se adaptó la navegación con colisiones por cuadrícula y se reutilizó la API del laboratorio anterior. [scripts/sql_simulator.gd](scripts/sql_simulator.gd) es ahora un adaptador del intérprete nuevo. [scripts/sql_lab.gd](scripts/sql_lab.gd) permanece como componente independiente de compatibilidad, cubierto por sus pruebas originales; no participa en la campaña. Se retiraron los cuestionarios, las penalizaciones por errores y los drones que interrumpían el aprendizaje.
+Codex se utilizó realmente para inspección, refactorización, diseño de misiones, GDScript, interfaz, animaciones de transición, depuración y pruebas. Se reutilizaron los retratos, sprites y sonidos presentes en el repositorio; no se generaron imágenes nuevas durante esta corrección. Los prompts para generar versiones futuras coherentes están en `PROMPTS_AVATARES.md`.
 
 ## Verificación
-
-En Linux, con Godot y ripgrep disponibles:
 
 ```bash
 GODOT_BIN=godot tests/run_tests.sh
 ```
 
-El ejecutor usa un directorio de usuario temporal: no modifica tu partida. Falla si encuentra errores de script aunque Godot devuelva código cero. Para ejecutar cada suite directamente (usa un perfil de pruebas si ya tienes una partida):
+La suite actual ejecuta 18 comprobaciones del simulador, 21 de campaña y 26 de integración RPG. La comprobación del parche reconoce patrones educativos, no ejecuta el Python escrito. El detalle, las limitaciones headless y el estado de la exportación Web están en `INFORME_VERIFICACION.md`.
 
-```bash
-godot --headless --path . --script res://tests/test_campaign.gd
-godot --headless --path . --script res://tests/test_sql_simulator.gd
-godot --headless --path . --script res://tests/test_sql_lab_ui.gd
-godot --headless --path . --script res://tests/test_game_integration.gd
-```
-
-Las suites recorren las ocho misiones, variantes SQL, entradas incompletas, regresión de seguridad, persistencia y recuperación, recompensas únicas, colisiones y accesibilidad de terminales/salidas en todos los mapas. La prueba de integración comienza una partida de prueba: por eso se recomienda el ejecutor aislado.
-
-[tests/screenshot_lab.gd](tests/screenshot_lab.gd) renderiza menú, mapa, diálogo, recompensa y laboratorio con Godot real, incluidos 1152×720 y 960×600. Requiere entorno gráfico y también debe ejecutarse con un directorio de usuario de pruebas.
-
-Validación realizada con **Godot 4.3 estable en Linux** y renderizador OpenGL Compatibility. Los recursos no usan APIs exclusivas de Linux, pero **Windows y los ejecutables exportados no se han probado**. Para distribuir binarios se necesitan las plantillas de exportación de Godot; este repositorio entrega el proyecto editable.
-
-Consulta [DISENO_DEL_JUEGO.md](DISENO_DEL_JUEGO.md) para el estado por fases y [GUIA_LABORATORIO_SQL.md](GUIA_LABORATORIO_SQL.md) para ampliar el contenido.
+El juego es educativo: ejecuta prácticas únicamente en laboratorios autorizados y sintéticos.

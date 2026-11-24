@@ -6,6 +6,9 @@ const SCHEMA := {
     "usuarios": ["id", "usuario", "clave", "rol", "dato"],
     "documentos": ["id", "titulo", "contenido", "owner_id"],
     "incidentes": ["id", "titulo", "estado"],
+    "products": ["id", "name", "price"],
+    "vault": ["id", "secret", "access"],
+    "projects": ["id", "name", "budget"],
 }
 var tables: Dictionary = {}
 var tokens: Array = []
@@ -34,7 +37,18 @@ func reset_data() -> void:
             {"id": 2, "titulo": "Proyecto Aurora", "contenido": "AURORA-42", "owner_id": 3},
             {"id": 3, "titulo": "Guía", "contenido": "Aprender haciendo", "owner_id": 1}],
         "incidentes": [{"id": 1, "titulo": "Login vulnerable", "estado": "abierto"},
-            {"id": 2, "titulo": "Documento ajeno", "estado": "abierto"}]
+            {"id": 2, "titulo": "Documento ajeno", "estado": "abierto"}],
+        "products": [
+            {"id": 1, "name": "Terminal segura", "price": 120},
+            {"id": 2, "name": "Teclado mecánico", "price": 80},
+            {"id": 3, "name": "Monitor SOC", "price": 240}],
+        "vault": [
+            {"id": 91, "secret": "AURORA-42", "access": "NULLSEC-CHALLENGE"},
+            {"id": 92, "secret": "KEY-ROTATE", "access": "RESTRICTED"}],
+        "projects": [
+            {"id": 1, "name": "Aurora", "budget": 90000},
+            {"id": 2, "name": "Beacon", "budget": 42000},
+            {"id": 3, "name": "Cipher", "budget": 150000}]
     }
 
 func execute(sql: String, params: Array = [], writable: bool = true) -> Dictionary:

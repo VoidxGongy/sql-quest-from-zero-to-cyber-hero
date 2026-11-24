@@ -1,346 +1,725 @@
 class_name QuestLab
 extends Control
+## Four-panel SQL Injection laboratory embedded in the RPG world.
+
 signal closed
 signal performed(success: bool)
 signal reward_requested
+signal lesson_progress
+
 const UI = preload("res://scripts/ui/ui_kit.gd")
+const MONO = preload("res://assets/fonts/DejaVuSansMono.ttf")
+const Blocks = preload("res://scripts/missions/code_blocks.gd")
+const BlockButton = preload("res://scripts/ui/code_block_button.gd")
+const BG := Color("0D1117")
+const PANEL := Color("161B22")
+const PANEL_ALT := Color("1C2430")
+const GREEN := Color("39D353")
+const BLUE := Color("58A6FF")
+const RED := Color("FF7B72")
+const AMBER := Color("D29922")
+const TEXT := Color("E6EDF3")
+const MUTED := Color("8B949E")
+
 var campaign: QuestCampaign
-var tabs: TabContainer
-var checklist: Label
-var objective: Label
+var root_panel: PanelContainer
+var grid: GridContainer
+var body_scroll: ScrollContainer
 var title: Label
-var output: RichTextLabel
-var history_view: RichTextLabel
-var query_input: CodeEdit
-var user_input: LineEdit
-var pass_input: LineEdit
-var search_input: LineEdit
-var predicate_input: CodeEdit
-var login_edit: CodeEdit
-var document_edit: CodeEdit
+var objective: Label
+var lesson: Label
+var phase: Label
+var primary_input: LineEdit
+var secondary_input: LineEdit
+var sort_input: LineEdit
+var predicate_input: LineEdit
+var attack_button: Button
+var time_button: Button
+var query_view: RichTextLabel
+var result_view: RichTextLabel
+var impact_view: Label
+var patch_edit: CodeEdit
+var verify_button: Button
+var verification_view: RichTextLabel
 var report_edit: TextEdit
-var patch_result: Label
 var report_result: Label
+var report_button: Button
+var checklist: Label
 var hint_label: Label
 var hint_button: Button
 var claim: Button
-var restore_button: Button
+var status_label: Label
+var reset_button: Button
 var reset_pending := false
-var reset_deadline := 0.0
+var reset_deadline := 0
 var shown_mission := -1
+var reduced_motion := false
+var lab_tween: Tween
+var output_tween: Tween
+var cards: Array[Control] = []
+var previous_button: Button
+var next_button: Button
+var repeat_button: Button
+var normal_example_button: Button
+var practice_feedback: Label
+var lesson_text: RichTextLabel
+var lesson_visual: RichTextLabel
+var stage_tween: Tween
+var tutor_message: Label
+var available_blocks: VBoxContainer
+var selected_blocks_box: VBoxContainer
+var selected_blocks: Array = []
+var selected_index := -1
+var block_feedback: String = ""
+const STAGES := ["APRENDER", "OBSERVAR", "PRACTICAR", "ATACAR", "DEFENDER", "VERIFICAR"]
+
+const LESSONS := {
+	"login": ["Una consulta es como una instrucción con espacios reservados para datos.", "Si se pegan datos directamente en la instrucción, una entrada puede cambiar su significado.", "La comilla cierra el texto. El comentario -- puede dejar la contraseña fuera de la comprobación."],
+	"search": ["Un buscador debe mostrar solo productos públicos.", "Si el término se pega dentro de la consulta, puede convertirse en instrucciones.", "UNION combina resultados compatibles y puede añadir datos que el buscador no debería mostrar."],
+	"order": ["El ordenamiento debe elegir una columna autorizada.", "Un identificador pegado directamente puede incluir una expresión SQL.", "CASE WHEN puede cambiar el orden según una condición y revelar una señal indirecta."],
+	"blind": ["Una aplicación puede filtrar información sin mostrar filas.", "Una condición manipulada puede cambiar una respuesta o un tiempo simulado.", "Comparar señales verdadera y falsa permite inferir información; ninguna demora es real."],
+	"final": ["NullSec desafía a CyberAcademy en un entorno autorizado.", "Investiga tres superficies: autenticación, búsqueda y ordenamiento.", "Conserva las evidencias, corrige cada superficie y documenta causa y defensa."]
+}
 
 func _ready() -> void:
-    theme = UI.theme()
-    set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    var background := ColorRect.new()
-    background.color = Color("081320")
-    background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    add_child(background)
-    var margin := MarginContainer.new()
-    margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    for edge in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + edge, 20)
-    add_child(margin)
-    var main := VBoxContainer.new()
-    main.add_theme_constant_override("separation", 10)
-    margin.add_child(main)
-    var header := HBoxContainer.new()
-    main.add_child(header)
-    title = UI.label(header, "Laboratorio SQL", 24, UI.GREEN)
-    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    UI.button(header, "Volver al mundo · Esc", close_lab)
-    objective = UI.paragraph(main, "", 16)
-    var body := HSplitContainer.new()
-    body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    body.split_offset = 690
-    main.add_child(body)
-    var left := VBoxContainer.new()
-    left.custom_minimum_size.x = 500
-    left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    body.add_child(left)
-    tabs = TabContainer.new()
-    tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    left.add_child(tabs)
-    tabs.tab_changed.connect(func(index):
-        if output != null: output.custom_minimum_size.y = 145 if index == 4 else 200)
-    _build_query()
-    _build_login()
-    _build_search()
-    _build_blind()
-    _build_patch()
-    _build_report()
-    _build_reference()
-    UI.label(left, "Ejecución simulada · entrada → consulta → resultado → explicación", 14, UI.MUTED)
-    output = RichTextLabel.new()
-    output.bbcode_enabled = false
-    output.custom_minimum_size.y = 175
-    output.size_flags_vertical = Control.SIZE_FILL
-    output.selection_enabled = true
-    output.add_theme_font_override("normal_font", preload("res://assets/fonts/DejaVuSansMono.ttf"))
-    output.add_theme_font_size_override("normal_font_size", 14)
-    output.add_theme_stylebox_override("normal", UI.texture_style(preload("res://assets/ui/terminal_frame.png"), 14, false))
-    left.add_child(output)
-    var side_scroll := ScrollContainer.new()
-    side_scroll.custom_minimum_size.x = 280
-    side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    body.add_child(side_scroll)
-    var evidence_panel := PanelContainer.new()
-    evidence_panel.add_theme_stylebox_override("panel", UI.texture_style(preload("res://assets/ui/mission_panel.png"), 14, false))
-    side_scroll.add_child(evidence_panel)
-    var side := VBoxContainer.new()
-    side.add_theme_constant_override("separation", 12)
-    side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    evidence_panel.add_child(side)
-    UI.label(side, "Evidencias de la misión", 18, UI.GREEN)
-    checklist = UI.paragraph(side, "", 15)
-    claim = UI.button(side, "Entregar misión", func(): reward_requested.emit())
-    hint_button = UI.button(side, "Pedir pista al instructor", _hint)
-    hint_label = UI.paragraph(side, "", 14)
-    restore_button = UI.button(side, "Restaurar laboratorio", _reset)
-    UI.label(side, "Historial de pruebas", 18)
-    history_view = RichTextLabel.new()
-    history_view.custom_minimum_size = Vector2(250, 230)
-    history_view.selection_enabled = true
-    side.add_child(history_view)
-    UI.paragraph(main, "Datos ficticios · SQL en memoria · Sin red ni comandos del sistema · Ctrl+Enter ejecuta la pestaña actual", 13)
-    hide()
+	theme = UI.theme()
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	var preferences := ConfigFile.new()
+	if preferences.load("user://settings.cfg") == OK:
+		reduced_motion = bool(preferences.get_value("display", "reduce_motion", false))
+	_build_ui()
+	hide()
 
-func _build_query() -> void:
-    var box := UI.scroll_page(tabs, "SQL")
-    UI.paragraph(box, "Escribe una consulta. Puedes usar SELECT, WHERE, AND, OR, LIKE, ORDER BY y LIMIT. INSERT y UPDATE se habilitan durante las prácticas.")
-    query_input = UI.editor(box, 130)
-    query_input.placeholder_text = "Escribe SQL aquí…"
-    UI.button(box, "Ejecutar consulta", func(): _run("query", query_input.text))
+func _build_ui() -> void:
+	var background := ColorRect.new()
+	background.color = BG
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for edge in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + edge, 18)
+	add_child(margin)
+	root_panel = PanelContainer.new()
+	root_panel.add_theme_stylebox_override("panel", UI.style(PANEL, Color("30363D"), 1))
+	margin.add_child(root_panel)
+	var content_margin := MarginContainer.new()
+	for edge in ["left", "right", "top", "bottom"]: content_margin.add_theme_constant_override("margin_" + edge, 16)
+	root_panel.add_child(content_margin)
+	var main := VBoxContainer.new()
+	main.add_theme_constant_override("separation", 10)
+	content_margin.add_child(main)
 
-func _build_login() -> void:
-    var box := UI.scroll_page(tabs, "Login")
-    UI.paragraph(box, "Aplicación vulnerable de entrenamiento. Credenciales de prueba: nova / nova123. La consulta concatena directamente las dos entradas.")
-    UI.label(box, "Usuario")
-    user_input = LineEdit.new()
-    user_input.placeholder_text = "Nombre o entrada de investigación"
-    box.add_child(user_input)
-    UI.label(box, "Clave ficticia")
-    pass_input = LineEdit.new()
-    pass_input.placeholder_text = "Visible para inspeccionar el experimento"
-    box.add_child(pass_input)
-    UI.button(box, "Probar inicio de sesión", func(): _run("login", user_input.text, pass_input.text))
-    pass_input.text_submitted.connect(func(_value): _run("login", user_input.text, pass_input.text))
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 14)
+	main.add_child(header)
+	title = UI.label(header, "LABORATORIO SQL INJECTION", 26, GREEN)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	phase = UI.label(header, "ATAQUE AUTORIZADO", 14, RED)
+	phase.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	UI.button(header, "Volver al mundo · Esc", close_lab)
+	objective = UI.paragraph(main, "", 17)
+	objective.add_theme_color_override("font_color", TEXT)
+	lesson = UI.paragraph(main, "", 15)
+	lesson.add_theme_color_override("font_color", MUTED)
+	var tutor_row := HBoxContainer.new()
+	tutor_row.add_theme_constant_override("separation", 12)
+	main.add_child(tutor_row)
+	var portrait := TextureRect.new()
+	portrait.texture = preload("res://assets/portraits/professor_byte.png")
+	portrait.custom_minimum_size = Vector2(64, 64)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tutor_row.add_child(portrait)
+	tutor_message = UI.paragraph(tutor_row, "Byte: investiguemos juntos.", 16)
+	tutor_message.add_theme_color_override("font_color", BLUE)
+	lesson_text = RichTextLabel.new()
+	lesson_text.bbcode_enabled = true
+	lesson_text.fit_content = true
+	lesson_text.add_theme_font_size_override("normal_font_size", 18)
+	main.add_child(lesson_text)
+	lesson_visual = RichTextLabel.new()
+	lesson_visual.bbcode_enabled = true
+	lesson_visual.fit_content = true
+	lesson_visual.add_theme_font_size_override("normal_font_size", 16)
+	main.add_child(lesson_visual)
+	normal_example_button = UI.button(main, "Probar entrada normal de ejemplo", _try_normal_example)
+	practice_feedback = UI.paragraph(main, "", 16)
+	practice_feedback.add_theme_color_override("font_color", AMBER)
+	practice_feedback.visible = false
 
-func _build_search() -> void:
-    var box := UI.scroll_page(tabs, "Búsqueda")
-    UI.paragraph(box, "Directorio público de estudiantes. El alcance autorizado de este buscador es id y nombre. Inspecciona qué sucede al modificar la entrada.")
-    search_input = LineEdit.new()
-    search_input.placeholder_text = "Nombre para buscar"
-    box.add_child(search_input)
-    UI.button(box, "Ejecutar búsqueda", func(): _run("search", search_input.text))
-    search_input.text_submitted.connect(func(_value): _run("search", search_input.text))
+	body_scroll = ScrollContainer.new()
+	body_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	main.add_child(body_scroll)
+	grid = GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_scroll.add_child(grid)
+	_build_attack_panel()
+	_build_query_panel()
+	_build_result_panel()
+	_build_defense_panel()
 
-func _build_blind() -> void:
-    var box := UI.scroll_page(tabs, "Sensores")
-    UI.paragraph(box, "Modelo de inferencia ciega. Introduce solo una condición sobre documentos. Los sensores no muestran filas. La latencia es virtual; no se usa ninguna función de espera SQL.")
-    predicate_input = UI.editor(box, 100)
-    predicate_input.placeholder_text = "Condición para investigar una hipótesis…"
-    UI.button(box, "Medir presencia · booleano", func(): _run("boolean", predicate_input.text))
-    UI.button(box, "Medir latencia · temporal", func(): _run("time", predicate_input.text))
+	var footer := HBoxContainer.new()
+	footer.add_theme_constant_override("separation", 10)
+	main.add_child(footer)
+	previous_button = UI.button(footer, "Anterior", _previous_step)
+	repeat_button = UI.button(footer, "Repetir", _repeat_step)
+	next_button = UI.button(footer, "Continuar", _next_step)
+	status_label = UI.label(footer, "SIMULACIÓN LOCAL · sin red, servidor ni procesos externos", 13, MUTED)
+	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint_label = UI.label(footer, "", 13, AMBER)
+	hint_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint_button = UI.button(footer, "Pedir pista", _hint)
+	claim = UI.button(footer, "Entregar misión", func(): reward_requested.emit())
+	claim.disabled = true
+	body_scroll.resized.connect(_layout_responsive)
+	get_viewport().size_changed.connect(_layout_responsive)
 
-func _build_patch() -> void:
-    var box := UI.scroll_page(tabs, "Reparación")
-    UI.paragraph(box, "Edita SQL con marcadores ?. La aplicación enlaza los valores por orden, fuera del código SQL. No uses interpolación ni comillas alrededor del marcador.")
-    UI.label(box, "Login · parámetros: [usuario, clave]", 15, UI.GREEN)
-    login_edit = UI.editor(box, 72)
-    UI.label(box, "Documentos · parámetros: [id solicitado, id de sesión]", 15, UI.GREEN)
-    document_edit = UI.editor(box, 72)
-    UI.button(box, "Aplicar y ejecutar regresión", _test_patch)
-    patch_result = UI.paragraph(box, "Las pruebas incluyen casos válidos, inválidos y acceso entre cuentas.", 14)
-    login_edit.text_changed.connect(_patch_changed)
-    document_edit.text_changed.connect(_patch_changed)
+func _card(heading: String, accent: Color, minimum_height := 250) -> VBoxContainer:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", UI.style(PANEL_ALT, accent.darkened(0.45), 1))
+	panel.custom_minimum_size = Vector2(0, minimum_height)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_child(panel)
+	cards.append(panel)
+	var margin := MarginContainer.new()
+	for edge in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + edge, 14)
+	panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	margin.add_child(box)
+	UI.label(box, heading, 18, accent)
+	return box
 
-func _build_report() -> void:
-    var box := UI.scroll_page(tabs, "Informe")
-    UI.paragraph(box, "Documenta un experimento que hayas reproducido. Escribe una línea por sección, con al menos 15 caracteres de explicación. El juego verifica estructura y evidencia capturada; el análisis técnico se puede revisar con un docente.")
-    report_edit = UI.editor(box, 210)
-    report_edit.placeholder_text = "Evidencia: describe la entrada y el resultado observado\nCausa: explica dónde se mezcla código con datos\nCorrección: describe el control y su prueba"
-    UI.button(box, "Adjuntar informe a evidencias", _report)
-    report_result = UI.paragraph(box, "", 14)
+func _build_attack_panel() -> void:
+	var box := _card("A · SIMULACIÓN DEL ATAQUE", RED, 270)
+	var intro := UI.paragraph(box, "Introduce datos sintéticos y observa cómo la aplicación vulnerable construye SQL.", 15)
+	intro.add_theme_color_override("font_color", TEXT)
+	primary_input = LineEdit.new()
+	primary_input.custom_minimum_size.y = 38
+	primary_input.add_theme_font_size_override("font_size", 16)
+	box.add_child(primary_input)
+	secondary_input = LineEdit.new()
+	secondary_input.custom_minimum_size.y = 38
+	secondary_input.add_theme_font_size_override("font_size", 16)
+	box.add_child(secondary_input)
+	sort_input = LineEdit.new()
+	sort_input.custom_minimum_size.y = 38
+	sort_input.add_theme_font_size_override("font_size", 16)
+	sort_input.visible = false
+	box.add_child(sort_input)
+	predicate_input = LineEdit.new()
+	predicate_input.custom_minimum_size.y = 38
+	predicate_input.add_theme_font_size_override("font_size", 16)
+	predicate_input.visible = false
+	box.add_child(predicate_input)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	box.add_child(actions)
+	attack_button = UI.button(actions, "Ejecutar demostración", _run_attack)
+	attack_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	time_button = UI.button(actions, "Medir tiempo", func(): _run_blind("time"))
+	time_button.visible = false
+	time_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-func _build_reference() -> void:
-    var box := UI.scroll_page(tabs, "Esquema")
-    UI.label(box, "Tablas del entorno ficticio", 20, UI.GREEN)
-    for table in campaign.db.SCHEMA:
-        UI.paragraph(box, table + " (" + ", ".join(campaign.db.SCHEMA[table]) + ")", 16)
-    UI.paragraph(box, "Primeros registros de estudiantes: Leo (1), Nova (2), Ada (3), Iris (4). Los nombres distinguen mayúsculas. Usuarios de prueba: nova / nova123; admin / supersecreto.")
-    UI.paragraph(box, "SELECT columna FROM tabla WHERE condición;\nComparaciones: = != <> < > <= >= LIKE\nCombina: condición AND condición / condición OR condición\nOrden: ORDER BY columna ASC o DESC; límite: LIMIT número\nUNION: dos SELECT con igual cantidad de columnas\nINSERT INTO tabla (columnas) VALUES (valores);\nUPDATE tabla SET columna = valor WHERE condición;")
-    UI.paragraph(box, "Texto entre comillas simples; dos comillas simples representan una comilla literal. -- comenta hasta el salto de línea. ? recibe un valor separado. Este dialecto educativo no admite JOIN, subconsultas, funciones SQL ni DDL.", 14)
-    UI.paragraph(box, "Las contraseñas visibles son una simplificación del laboratorio SQL. Una aplicación real almacena hashes de contraseña y verifica la clave con un algoritmo adecuado; parametrizar no sustituye ese control.", 14)
+func _build_query_panel() -> void:
+	var box := _card("B · CONSULTA CONSTRUIDA", BLUE, 270)
+	UI.paragraph(box, "La entrada manipulada se resalta para mostrar qué fragmento dejó de ser dato y pasó a actuar como SQL.", 15)
+	query_view = RichTextLabel.new()
+	query_view.bbcode_enabled = true
+	query_view.fit_content = false
+	query_view.scroll_active = true
+	query_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	query_view.custom_minimum_size.y = 160
+	query_view.add_theme_font_override("normal_font", MONO)
+	query_view.add_theme_font_size_override("normal_font_size", 15)
+	query_view.add_theme_stylebox_override("normal", UI.style(Color("0D1117"), Color("30363D"), 1))
+	box.add_child(query_view)
+
+func _build_result_panel() -> void:
+	var box := _card("C · RESULTADOS E IMPACTO", AMBER, 270)
+	result_view = RichTextLabel.new()
+	result_view.bbcode_enabled = false
+	result_view.scroll_active = true
+	result_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	result_view.custom_minimum_size.y = 120
+	result_view.add_theme_font_override("normal_font", MONO)
+	result_view.add_theme_font_size_override("normal_font_size", 15)
+	result_view.add_theme_stylebox_override("normal", UI.style(Color("0D1117"), Color("30363D"), 1))
+	box.add_child(result_view)
+	impact_view = UI.paragraph(box, "Esperando una prueba autorizada…", 15)
+	impact_view.add_theme_color_override("font_color", MUTED)
+
+func _build_defense_panel() -> void:
+	var box := _card("D · EL ARREGLO Y LA REGRESIÓN", GREEN, 300)
+	UI.paragraph(box, "Elige bloques, arrástralos o pulsa para añadirlos. Selecciona un bloque colocado para moverlo o retirarlo.", 15)
+	UI.label(box, "BLOQUES DISPONIBLES", 15, BLUE)
+	available_blocks = VBoxContainer.new()
+	box.add_child(available_blocks)
+	UI.label(box, "TU SOLUCIÓN", 15, GREEN)
+	selected_blocks_box = VBoxContainer.new()
+	box.add_child(selected_blocks_box)
+	var controls := HBoxContainer.new()
+	box.add_child(controls)
+	UI.button(controls, "↑ Subir", func(): _move_selected(-1))
+	UI.button(controls, "↓ Bajar", func(): _move_selected(1))
+	UI.button(controls, "Quitar", _remove_selected)
+	patch_edit = UI.editor(box, 110)
+	patch_edit.add_theme_font_size_override("font_size", 15)
+	patch_edit.editable = false
+	verify_button = UI.button(box, "Aplicar parche y ejecutar pruebas", _test_patch)
+	verification_view = RichTextLabel.new()
+	verification_view.bbcode_enabled = false
+	verification_view.custom_minimum_size.y = 78
+	verification_view.add_theme_font_override("normal_font", MONO)
+	verification_view.add_theme_font_size_override("normal_font_size", 14)
+	box.add_child(verification_view)
+	UI.label(box, "EVIDENCIAS DE MISIÓN", 14, AMBER)
+	checklist = UI.paragraph(box, "", 14)
+	report_edit = TextEdit.new()
+	report_edit.custom_minimum_size.y = 100
+	report_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	report_edit.placeholder_text = "Evidencia: ...\nCausa: ...\nCorrección: ..."
+	report_edit.add_theme_font_size_override("font_size", 15)
+	report_edit.visible = false
+	box.add_child(report_edit)
+	report_button = UI.button(box, "Guardar reporte de certificación", _save_report)
+	report_button.visible = false
+	report_result = UI.paragraph(box, "", 14)
+	reset_button = UI.button(box, "Restaurar escenario", _reset)
+
+func _layout_responsive() -> void:
+	if grid == null: return
+	grid.columns = 1 if get_viewport_rect().size.x < 1040.0 else 2
 
 func open_lab() -> void:
-    if shown_mission != campaign.current:
-        query_input.text = ""
-        user_input.text = ""
-        pass_input.text = ""
-        search_input.text = ""
-        predicate_input.text = ""
-        report_edit.text = campaign.reports.get(str(campaign.current), "")
-        patch_result.text = "Aplica tus cambios y ejecuta la batería de regresión."
-        report_result.text = ""
-        _refresh_tutor()
-        output.text = campaign.mission().lesson
-        shown_mission = campaign.current
-    login_edit.text = campaign.login_patch
-    document_edit.text = campaign.document_patch
-    var m := campaign.current
-    var available: Array = []
-    for tool in ["query", "login", "search", "sensors", "patch", "report", "schema"]:
-        available.append((m >= campaign.missions.size() and tool != "report") or tool == "schema" or (m < campaign.missions.size() and tool in campaign.mission().tools))
-    for i in range(available.size()): tabs.set_tab_hidden(i, not available[i])
-    for i in range(available.size()):
-        if available[i]: tabs.current_tab = i; break
-    show()
-    refresh()
-    match tabs.current_tab:
-        0: query_input.grab_focus()
-        1: user_input.grab_focus()
-        2: search_input.grab_focus()
-        3: predicate_input.grab_focus()
-        4: login_edit.grab_focus()
+	if campaign == null: return
+	_setup_mission()
+	show()
+	_layout_responsive()
+	root_panel.pivot_offset = root_panel.size * 0.5
+	if lab_tween and lab_tween.is_running(): lab_tween.kill()
+	root_panel.modulate.a = 0.0
+	root_panel.scale = Vector2(0.985, 0.985)
+	lab_tween = create_tween()
+	lab_tween.set_parallel()
+	lab_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	lab_tween.tween_property(root_panel, "modulate:a", 1.0, 0.2 if not reduced_motion else 0.0)
+	lab_tween.tween_property(root_panel, "scale", Vector2.ONE, 0.22 if not reduced_motion else 0.0)
+	primary_input.grab_focus()
 
-func refresh() -> void:
-    title.text = "Laboratorio · %02d / %02d" % [mini(campaign.current + 1, campaign.missions.size()), campaign.missions.size()]
-    objective.text = campaign.mission().objective
-    if campaign.current >= campaign.missions.size():
-        title.text = "Laboratorio · práctica libre"
-        objective.text = "Campaña completada. Experimenta con todas las herramientas, restaura los datos y sigue aprendiendo."
-    var lines: PackedStringArray = []
-    var keys := campaign.goals()
-    for i in range(keys.size()): lines.append(("[OK]  " if campaign.evidence.has(keys[i]) else "[  ]  ") + campaign.mission().goals[i])
-    checklist.text = "\n\n".join(lines)
-    if campaign.current >= campaign.missions.size(): checklist.text = "Certificación conseguida. Tu progreso está a salvo; este entorno queda abierto para practicar."
-    claim.disabled = not campaign.can_complete()
-    var entries: PackedStringArray = []
-    for entry in campaign.history:
-        entries.append(("OK · " if entry.ok else "ERROR · ") + entry.kind + "\n" + entry.input + "\n" + entry.message)
-    history_view.text = "\n\n".join(entries)
-    history_view.scroll_to_line(maxi(0, history_view.get_line_count() - 1))
+func _setup_mission() -> void:
+	practice_feedback.text = ""
+	practice_feedback.visible = false
+	var data := campaign.mission()
+	var kind: String = data.get("kind", "login")
+	shown_mission = campaign.current
+	title.text = "LABORATORIO %02d / 05 · %s" % [campaign.current + 1, data.get("title", "SQL Injection")]
+	objective.text = data.get("objective", "")
+	lesson.text = data.get("lesson", "")
+	phase.text = "FASE A · ATAQUE AUTORIZADO"
+	primary_input.visible = kind in ["login", "search", "final"]
+	secondary_input.visible = kind in ["login", "final"]
+	sort_input.visible = kind in ["order", "final"]
+	predicate_input.visible = kind == "blind"
+	primary_input.placeholder_text = "Usuario" if kind == "login" else "Término de búsqueda / usuario"
+	secondary_input.placeholder_text = "Contraseña" if kind == "login" else "Término de búsqueda UNION"
+	sort_input.placeholder_text = "sort_by / expresión CASE WHEN"
+	predicate_input.placeholder_text = "Condición blind, por ejemplo contenido LIKE 'AURORA%'"
+	attack_button.text = "Ejecutar cadena NullSec" if kind == "final" else "Ejecutar ataque simulado"
+	time_button.visible = kind == "blind"
+	if kind == "blind": attack_button.text = "Medir respuesta booleana"
+	patch_edit.text = campaign.patch_text
+	patch_edit.editable = false
+	selected_blocks = campaign.lesson_state().get("blocks", []).duplicate()
+	selected_index = -1
+	_render_blocks()
+	report_edit.visible = kind == "final"
+	report_button.visible = kind == "final"
+	report_edit.text = str(campaign.reports.get(str(campaign.current), "")) if kind == "final" else ""
+	report_result.text = ""
+	verification_view.text = "Aún no hay regresión."
+	query_view.text = "[color=#8B949E]Esperando la consulta construida…[/color]"
+	result_view.text = "Esperando la salida del laboratorio…"
+	impact_view.text = "La alerta y su explicación aparecerán después de ejecutar la prueba."
+	_set_defaults(kind)
+	_refresh_tutor()
+	_show_stage()
+	refresh()
 
-func _run(kind: String, text: String, extra: String = "") -> void:
-    var result := campaign.submit(kind, text, extra)
-    var rendered: String = "ENTRADA\n" + text + (" / " + extra if kind == "login" else "") + "\n\nCONSULTA CONSTRUIDA\n" + result.query
-    rendered += "\n\nRESULTADO\n"
-    if result.ok and not result.columns.is_empty():
-        rendered += " | ".join(result.columns) + "\n"
-        for row in result.rows:
-            var values: PackedStringArray = []
-            for col in result.columns: values.append(str(row[col]))
-            rendered += " | ".join(values) + "\n"
-    rendered += "\n" + result.message + _teacher_feedback(result)
-    if kind == "login" and result.ok and not result.rows.is_empty():
-        rendered += "\nSesión simulada: " + str(result.rows[0].usuario) + ". Se usa la primera fila, no se eleva automáticamente a administrador."
-    output.text = rendered
-    output.scroll_to_line(maxi(0, output.get_line_count() - 1))
-    performed.emit(result.ok)
-    refresh()
+func _set_defaults(kind: String) -> void:
+	primary_input.text = ""
+	secondary_input.text = ""
+	sort_input.text = ""
+	predicate_input.text = ""
 
-func _patch_changed() -> void:
-    if not visible: return
-    campaign.login_patch = login_edit.text
-    campaign.document_patch = document_edit.text
-    campaign.evidence.erase("login_fixed")
-    campaign.evidence.erase("access_fixed")
-    refresh()
+func _show_stage() -> void:
+	var state := campaign.lesson_state()
+	var stage := int(state.stage)
+	var step := int(state.step)
+	var kind := str(campaign.mission().kind)
+	tutor_message.text = "Byte: " + ["Te explicaré una idea a la vez.", "Observa la parte resaltada; puedes repetirla.", "Practiquemos juntos; equivocarse no cuesta vidas.", "Ahora inténtalo tú. Pide una pista si la necesitas.", _defense_explanation(kind), "Construye el arreglo con bloques; pulsar o arrastrar son equivalentes."][mini(stage, 5)]
+	phase.text = STAGES[mini(stage, STAGES.size() - 1)]
+	objective.text = " → ".join(STAGES) + "   ·   " + phase.text
+	lesson.text = "Profesor Byte · " + str(campaign.mission().title)
+	for card in cards: card.visible = false
+	previous_button.visible = stage <= 1 and step > 0
+	repeat_button.visible = stage <= 1
+	next_button.visible = stage <= 1 or (stage == 2 and bool(state.guided)) or stage == 4
+	hint_button.visible = stage == 3 or stage == 4
+	claim.visible = stage == 5
+	normal_example_button.visible = stage == 2 and not bool(state.normal)
+	lesson_visual.text = ""
+	match stage:
+		0:
+			lesson_text.text = "[color=#58A6FF]BYTE · APRENDER[/color]\n" + str(LESSONS[kind][mini(step, 2)])
+			lesson_visual.text = "[color=#39D353]DATOS[/color]  →  aplicación  →  [color=#58A6FF]INSTRUCCIÓN SQL[/color]"
+		1:
+			lesson_text.text = "[color=#58A6FF]BYTE · OBSERVAR[/color]\n" + _demo_explanation(kind, step)
+			lesson_visual.text = _demo_visual(kind, step)
+		2:
+			cards[0].visible = true
+			cards[1].visible = true
+			cards[2].visible = true
+			lesson_text.text = "[color=#58A6FF]BYTE · PRÁCTICA GUIADA[/color]\n" + ("Paso 1: escribe los datos y pulsa Ejecutar ataque simulado, o usa el botón de ejemplo. " + _normal_example(kind) if not state.normal else ("Paso 2: prueba la entrada guiada y compara el resultado con el anterior." if not state.guided else "Paso 3: compara ambas trazas. La entrada manipulada cambió la estructura; pulsa Continuar."))
+			if state.normal and not state.guided: lesson_visual.text = "Ejemplo guiado: " + _guided_example(kind)
+		3:
+			cards[0].visible = true
+			cards[1].visible = true
+			cards[2].visible = true
+			lesson_text.text = "[color=#FF7B72]MISIÓN INDEPENDIENTE[/color]\nDemuestra la vulnerabilidad con una entrada propia. Solicita una pista si la necesitas."
+		4:
+			lesson_text.text = "[color=#39D353]BYTE · DEFENDER[/color]\n" + _defense_explanation(kind)
+			lesson_visual.text = "[color=#58A6FF]ESTRUCTURA SQL[/color]   │   [color=#39D353]VALORES SEPARADOS[/color]"
+		5:
+			cards[3].visible = true
+			lesson_text.text = "[color=#39D353]VERIFICAR[/color]\nOrganiza los bloques y ejecuta las pruebas con datos ficticios. No se ejecuta Python."
+	if stage_tween and stage_tween.is_running(): stage_tween.kill()
+	lesson_visual.visible_characters = 0
+	stage_tween = create_tween()
+	stage_tween.tween_property(lesson_visual, "visible_characters", lesson_visual.get_total_character_count(), 0.35 if not reduced_motion else 0.0)
+	campaign.save_lesson()
+	lesson_progress.emit()
+
+func _render_blocks() -> void:
+	if available_blocks == null or campaign == null: return
+	for child in available_blocks.get_children(): child.queue_free()
+	for child in selected_blocks_box.get_children(): child.queue_free()
+	var kind := str(campaign.mission().kind)
+	for id in Blocks.available(kind):
+		if id in selected_blocks: continue
+		var button = BlockButton.new()
+		button.block_id = id
+		button.source = "available"
+		button.text = Blocks.PIECES[id]
+		button.add_theme_font_override("font", MONO)
+		button.add_theme_font_size_override("font_size", 13)
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.pressed.connect(_add_block.bind(id))
+		button.on_drop = _drop_block
+		available_blocks.add_child(button)
+	for i in range(selected_blocks.size()):
+		var id: String = selected_blocks[i]
+		var button = BlockButton.new()
+		button.block_id = id
+		button.source = "selected"
+		button.text = ("▶ " if i == selected_index else "   ") + Blocks.PIECES[id]
+		button.add_theme_font_override("font", MONO)
+		button.add_theme_font_size_override("font_size", 13)
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.pressed.connect(_select_block.bind(i))
+		button.on_drop = _drop_block
+		selected_blocks_box.add_child(button)
+	var lines := PackedStringArray()
+	for id in selected_blocks: lines.append(Blocks.PIECES[id])
+	patch_edit.text = "\n".join(lines)
+	campaign.lesson_state()["blocks"] = selected_blocks.duplicate()
+
+func _add_block(id: String) -> void:
+	if id in selected_blocks: return
+	campaign.evidence.erase("defense")
+	selected_blocks.append(id)
+	selected_index = selected_blocks.size() - 1
+	tutor_message.text = "Byte: " + ("Ese bloque incorpora entrada sin validar; observa si es apropiado." if id.begins_with("unsafe_") else "Bloque añadido. Comprueba qué necesita antes de ejecutarse.")
+	_render_blocks()
+	refresh()
+	lesson_progress.emit()
+
+func _select_block(index: int) -> void:
+	selected_index = index
+	_render_blocks()
+
+func _move_selected(direction: int) -> void:
+	var target := selected_index + direction
+	if selected_index < 0 or target < 0 or target >= selected_blocks.size(): return
+	campaign.evidence.erase("defense")
+	var item = selected_blocks.pop_at(selected_index)
+	selected_blocks.insert(target, item)
+	selected_index = target
+	_render_blocks()
+	refresh()
+	lesson_progress.emit()
+
+func _remove_selected() -> void:
+	if selected_index < 0 or selected_index >= selected_blocks.size(): return
+	campaign.evidence.erase("defense")
+	selected_blocks.remove_at(selected_index)
+	selected_index = -1
+	_render_blocks()
+	refresh()
+	lesson_progress.emit()
+
+func _drop_block(data: Dictionary, target_id: String) -> void:
+	var id := str(data.get("block_id", ""))
+	if data.get("source") == "available": _add_block(id)
+	var from := selected_blocks.find(id)
+	var target := selected_blocks.find(target_id)
+	if from < 0 or target < 0 or from == target: return
+	campaign.evidence.erase("defense")
+	selected_blocks.remove_at(from)
+	selected_blocks.insert(target, id)
+	selected_index = target
+	_render_blocks()
+	refresh()
+	lesson_progress.emit()
+
+func _normal_example(kind: String) -> String:
+	return {"login": "Prueba usuario visitante y contraseña visitante.", "search": "Busca Terminal.", "order": "Ordena por name.", "blind": "Prueba id = 1.", "final": "Prueba visitante, Terminal y name en los tres campos."}[kind]
+
+func _try_normal_example() -> void:
+	if int(campaign.lesson_state().stage) != 2 or campaign.lesson_state().normal: return
+	match str(campaign.mission().kind):
+		"login":
+			primary_input.text = "visitante"
+			secondary_input.text = "visitante"
+		"search": primary_input.text = "Terminal"
+		"order": sort_input.text = "name"
+		"blind": predicate_input.text = "id = 1"
+		"final":
+			primary_input.text = "visitante"
+			secondary_input.text = "Terminal"
+			sort_input.text = "name"
+	_run_attack()
+
+func _demo_explanation(kind: String, step: int) -> String:
+	if kind == "login":
+		return ["Una entrada normal permanece entre comillas y la contraseña sigue siendo necesaria.", "La comilla simple cierra el valor de usuario antes de lo previsto.", "Los guiones -- inician un comentario: la condición de contraseña queda comentada."][mini(step, 2)]
+	return ["Observa cómo se incorpora una entrada normal a la consulta.", "Ahora una entrada manipulada modifica la estructura que controla la aplicación.", str(LESSONS[kind][2])][mini(step, 2)]
+
+func _demo_visual(kind: String, step: int) -> String:
+	if kind == "login":
+		return ["SELECT … usuario = '[color=#39D353]admin[/color]' AND clave = '…'", "SELECT … usuario = 'admin[color=#FF7B72]'[/color] …", "SELECT … usuario = 'admin' [color=#FF7B72]-- AND clave = '…'[/color]  ← comentado"][mini(step, 2)]
+	return ["[color=#58A6FF]consulta[/color] + [color=#39D353]dato normal[/color]", "[color=#58A6FF]consulta[/color] + [color=#FF7B72]entrada manipulada[/color]", _guided_example(kind)][mini(step, 2)]
+
+func _guided_example(kind: String) -> String:
+	return {"login": "usuario: admin' --   contraseña: x", "search": "' UNION SELECT id, secret, 0 FROM vault --", "order": "CASE WHEN budget > 0 THEN name END", "blind": "contenido LIKE 'AURORA%'", "final": "login: admin' -- · búsqueda: ' UNION SELECT id, secret, 0 FROM vault -- · orden: CASE WHEN budget > 0 THEN name END"}[kind]
+
+func _defense_explanation(kind: String) -> String:
+	if kind == "order": return "Los nombres de columna no son valores: el servidor debe elegirlos desde una lista blanca de constantes."
+	if kind == "search": return "Envía el término como parámetro. Los comodines % pertenecen al valor, no al texto SQL."
+	if kind == "blind": return "Separa los valores mediante parámetros y comprueba que el propietario esté autorizado."
+	if kind == "final": return "Combina parámetros para valores y una lista blanca para columnas; documenta las evidencias."
+	return "No pegues usuario ni contraseña en SQL. Los marcadores reservan posiciones y los valores se envían por separado. En sistemas reales verifica hashes de contraseña."
+
+func _next_step() -> void:
+	var state := campaign.lesson_state()
+	if int(state.stage) <= 1 and int(state.step) < 2:
+		state.step += 1
+	elif int(state.stage) == 2 and not state.guided:
+		return
+	else:
+		if int(state.stage) == 2:
+			state.compared = true
+			_set_defaults(str(campaign.mission().kind))
+		state.stage = mini(int(state.stage) + 1, 5)
+		state.step = 0
+	_show_stage()
+	refresh()
+
+func _previous_step() -> void:
+	var state := campaign.lesson_state()
+	state.step = maxi(0, int(state.step) - 1)
+	_show_stage()
+
+func _repeat_step() -> void:
+	_show_stage()
+
+func _run_attack() -> void:
+	var kind: String = campaign.mission().get("kind", "login")
+	var state := campaign.lesson_state()
+	if int(state.stage) not in [2, 3]: return
+	campaign.guided_mode = int(state.stage) == 2
+	var result: Dictionary
+	if kind == "final": result = campaign.submit_final(primary_input.text, secondary_input.text, sort_input.text)
+	elif kind == "order": result = campaign.submit(kind, sort_input.text)
+	elif kind == "blind": result = campaign.submit(kind, predicate_input.text, "boolean")
+	else: result = campaign.submit(kind, primary_input.text, secondary_input.text)
+	campaign.guided_mode = false
+	_render_result(result)
+	_advance_practice(result)
+	performed.emit(result.get("attack", false))
+	refresh()
+
+func _run_blind(mode: String) -> void:
+	var state := campaign.lesson_state()
+	if int(state.stage) not in [2, 3]: return
+	campaign.guided_mode = int(state.stage) == 2
+	var result := campaign.submit("blind", predicate_input.text, mode)
+	campaign.guided_mode = false
+	_render_result(result)
+	_advance_practice(result)
+	performed.emit(result.get("attack", false))
+	refresh()
+
+func _advance_practice(result: Dictionary) -> void:
+	var state := campaign.lesson_state()
+	if int(state.stage) == 2:
+		if not state.normal:
+			var kind := str(campaign.mission().kind)
+			var has_input := not str(result.get("input", "")).strip_edges().is_empty()
+			if kind == "final": has_input = not primary_input.text.strip_edges().is_empty() and not secondary_input.text.strip_edges().is_empty() and not sort_input.text.strip_edges().is_empty()
+			var legitimate := bool(result.get("ok", false))
+			if kind in ["login", "search"]: legitimate = legitimate and not result.get("rows", []).is_empty()
+			if kind == "final": legitimate = has_input
+			if has_input and legitimate and not result.get("attack", false):
+				state.normal = true
+				practice_feedback.text = "Prueba normal completada. Ahora sigue el paso 2."
+			else:
+				practice_feedback.text = "Todavía estás en el paso 1. Pulsa «Probar entrada normal de ejemplo» arriba; después podrás probar el ataque."
+			practice_feedback.visible = true
+		elif result.get("attack", false):
+			state.guided = true
+			practice_feedback.text = "Ataque observado. Compara la consulta y pulsa Continuar."
+			practice_feedback.visible = true
+		else:
+			impact_view.text += "\nAún no se ha observado el cambio; prueba el ejemplo guiado."
+			practice_feedback.text = "Revisa el ejemplo del paso 2. " + ("En login, escribe admin' -- sin añadir una comilla al final." if campaign.mission().kind == "login" else "Comprueba que lo hayas copiado completo.")
+			practice_feedback.visible = true
+	elif int(state.stage) == 3 and result.get("attack", false):
+		practice_feedback.visible = false
+		state.stage = 4
+		state.step = 0
+	_show_stage()
+
+func _render_result(result: Dictionary) -> void:
+	var query: String = str(result.get("query", ""))
+	var highlight: String = str(result.get("highlight", ""))
+	query_view.text = _highlight_query(query, highlight)
+	var lines := PackedStringArray()
+	lines.append("ENTRADA PROCESADA")
+	lines.append(str(result.get("input", "(entrada no disponible)")))
+	lines.append("\nRESULTADO")
+	var rows: Array = result.get("rows", [])
+	var columns: Array = result.get("columns", [])
+	if rows.is_empty(): lines.append("(sin filas visibles · el laboratorio puede ocultar datos)")
+	else:
+		lines.append(" | ".join(columns))
+		for row in rows:
+			var values := PackedStringArray()
+			for column in columns: values.append(str(row.get(column, "")))
+			lines.append(" | ".join(values))
+	result_view.text = "\n".join(lines)
+	impact_view.text = str(result.get("message", result.get("error", "")))
+	if output_tween and output_tween.is_running(): output_tween.kill()
+	result_view.visible_characters = 0
+	if reduced_motion:
+		result_view.visible_characters = -1
+	else:
+		output_tween = create_tween()
+		output_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		output_tween.tween_property(result_view, "visible_characters", result_view.get_total_character_count(), 0.28)
+
+func _highlight_query(query: String, fragment: String) -> String:
+	var safe_query := _escape_bbcode(query)
+	if fragment.is_empty(): return safe_query
+	var safe_fragment := _escape_bbcode(fragment)
+	if not safe_query.contains(safe_fragment): return safe_query
+	var index := safe_query.find(safe_fragment)
+	return safe_query.substr(0, index) + "[bgcolor=#4b2424][color=#FF7B72]" + safe_fragment + "[/color][/bgcolor]" + safe_query.substr(index + safe_fragment.length())
+
+func _escape_bbcode(value: String) -> String:
+	return value.replace("[", "[lb]").replace("]", "[rb]")
 
 func _test_patch() -> void:
-    campaign.login_patch = login_edit.text
-    campaign.document_patch = document_edit.text
-    var results := campaign.test_patches()
-    output.text = "REGRESIÓN · consultas con parámetros separados\n\n" + "\n".join(results)
-    patch_result.text = "Resultados de las pruebas en el panel de ejecución."
-    performed.emit(campaign.evidence.has("login_fixed") and campaign.evidence.has("access_fixed"))
-    refresh()
+	if int(campaign.lesson_state().stage) != 5: return
+	var result: Dictionary = Blocks.evaluate(str(campaign.mission().kind), selected_blocks, campaign.db)
+	verification_view.text = str(result.message)
+	tutor_message.text = "Byte: " + ("¡Excelente! La estructura y los datos permanecen separados. " if result.ok else "Aún falta algo. ") + str(result.message)
+	if result.ok:
+		campaign.patch_text = patch_edit.text
+		campaign.mark("defense")
+	phase.text = "FASE B · SISTEMA PROTEGIDO" if campaign.evidence.has("defense") else "FASE B · PARCHE INCOMPLETO"
+	performed.emit(campaign.evidence.has("defense"))
+	_refresh_tutor()
+	refresh()
 
-func _report() -> void:
-    var valid := campaign.save_report(report_edit.text)
-    report_result.text = "Informe adjunto. La calidad de la explicación queda disponible para revisión docente." if valid else "Incluye Evidencia:, Causa: y Corrección: con explicaciones. Primero reproduce un hallazgo; mínimo 100 caracteres en total."
-    performed.emit(valid)
-    refresh()
+func _save_report() -> void:
+	var valid := campaign.save_report(report_edit.text)
+	report_result.text = "Reporte adjunto: evidencia, causa y corrección registradas." if valid else "Completa Evidencia:, Causa: y Corrección: con al menos 100 caracteres y una evidencia reproducida."
+	performed.emit(valid)
+	refresh()
+
+func refresh() -> void:
+	if campaign == null or claim == null: return
+	var lines := PackedStringArray()
+	var mission_goals: Array = campaign.mission().get("goals", [])
+	var criteria: Array = campaign.goals()
+	for i in range(criteria.size()): lines.append(("[OK]  " if campaign.evidence.has(criteria[i]) else "[  ]  ") + str(mission_goals[i]))
+	checklist.text = "\n".join(lines)
+	claim.disabled = not campaign.can_complete()
+	status_label.text = "EVIDENCIAS %d/%d · XP %d · ENTORNO AISLADO" % [campaign.evidence.size(), criteria.size(), campaign.xp]
 
 func _hint() -> void:
-    var message := campaign.hint()
-    var mentor: String = campaign.mission().get("mentor", "Instructor")
-    var count := int(campaign.hints.get(str(campaign.current), 0))
-    hint_label.text = "%s · Pista %d de 3\n%s" % [mentor, count, message]
-    hint_button.text = "Pistas completas · 3/3" if count >= 3 else "Pedir otra pista · %d/3" % count
-    hint_button.disabled = count >= 3
+	var count := int(campaign.hints.get(str(campaign.current), 0))
+	var hints: Array = campaign.mission().hints
+	if campaign.mission().kind == "login" and int(campaign.lesson_state().stage) == 3:
+		hints = ["Recuerda qué puede ocurrir al introducir una comilla simple.", "Un comentario SQL puede dejar de lado el resto de la condición.", "Comienza con un usuario existente seguido de una comilla; después considera el comentario."]
+	campaign.hints[str(campaign.current)] = mini(count + 1, 3)
+	hint_label.text = "PISTA %d/3 · %s" % [mini(count + 1, 3), hints[mini(count, 2)]]
+	campaign.save_lesson()
 
 func _refresh_tutor() -> void:
-    var count := int(campaign.hints.get(str(campaign.current), 0))
-    var mentor: String = campaign.mission().get("mentor", "Instructor")
-    if count > 0:
-        hint_label.text = "%s · Última pista · %d de 3\n%s" % [mentor, count, campaign.mission().hints[mini(count - 1, 2)]]
-    else:
-        hint_label.text = "%s: Vamos paso a paso. Prueba, observa el resultado y vuelve a intentar; pedir pistas no reduce tu experiencia." % mentor
-    hint_button.text = "Pistas completas · 3/3" if count >= 3 else ("Pedir otra pista · %d/3" % count if count > 0 else "Pedir pista al instructor")
-    hint_button.disabled = count >= 3
-
-func _teacher_feedback(result: Dictionary) -> String:
-    var mentor: String = campaign.mission().get("mentor", "Instructor")
-    if campaign.current >= campaign.missions.size():
-        return "\n\n%s: La campaña terminó. En práctica libre puedes seguir experimentando y explicando tus resultados." % mentor
-    if not result.ok:
-        return "\n\n%s: No pasa nada: un error también enseña. %s Revisa el esquema y la consulta construida; puedes cambiar una cosa por vez. Las pruebas no restan experiencia." % [mentor, _explain_error(str(result.error))]
-    if campaign.can_complete():
-        return "\n\n%s: ¡Reuniste toda la evidencia! Antes de entregar, comprueba que puedes explicar qué resultado confirma tu conclusión." % mentor
-    var goals: Array = campaign.mission().get("goals", [])
-    var criteria: Array = campaign.mission().get("criteria", [])
-    for index in range(criteria.size()):
-        if not campaign.evidence.has(criteria[index]):
-            return "\n\n%s: La prueba se ejecutó. Compárala con el objetivo «%s»; esa es la próxima evidencia que falta. Si te atascas, pide una pista." % [mentor, goals[index]]
-    return "\n\n%s: Observa el resultado y anótalo como evidencia antes de continuar." % mentor
-
-func _explain_error(message: String) -> String:
-    var lower := message.to_lower()
-    if lower.contains("texto sin cerrar"):
-        return "Parece que una comilla simple quedó abierta."
-    if lower.contains("columna"):
-        return "Parece que el nombre de una columna no coincide con el esquema."
-    if lower.contains("tabla"):
-        return "Comprueba el nombre de la tabla en Esquema."
-    if lower.contains("se esperaba") or lower.contains("operación no disponible"):
-        return "El orden de la sentencia no coincide con lo que espera este laboratorio."
-    if lower.contains("parámetro"):
-        return "Revisa cuántos marcadores ? hay y cuántos valores recibe cada uno."
-    return "Lee el mensaje del simulador para identificar qué parte revisar."
+	if campaign == null: return
+	var count := int(campaign.hints.get(str(campaign.current), 0))
+	hint_label.text = "Byte: observa la traza y cambia una sola cosa por intento." if count == 0 else "Byte: ya tienes %d pista(s); vuelve a comparar entrada y estructura." % count
 
 func _reset() -> void:
-    if not reset_pending or Time.get_ticks_msec() > reset_deadline:
-        reset_pending = true
-        reset_deadline = Time.get_ticks_msec() + 5000
-        restore_button.text = "Confirmar reinicio de evidencias"
-        return
-    campaign.reset_lab()
-    reset_pending = false
-    restore_button.text = "Restaurar laboratorio"
-    output.text = "Datos y evidencias de esta misión restaurados. Tu experiencia y las misiones anteriores se conservan."
-    refresh()
-
-func _process(_delta: float) -> void:
-    if reset_pending and Time.get_ticks_msec() > reset_deadline:
-        reset_pending = false
-        restore_button.text = "Restaurar laboratorio"
+	if not reset_pending or Time.get_ticks_msec() > reset_deadline:
+		reset_pending = true
+		reset_deadline = Time.get_ticks_msec() + 5000
+		reset_button.text = "Confirmar reinicio"
+		return
+	campaign.reset_lab()
+	campaign.lessons.erase(str(campaign.current))
+	reset_pending = false
+	reset_button.text = "Restaurar escenario"
+	_setup_mission()
 
 func close_lab() -> void:
-    hide()
-    closed.emit()
+	if not visible: return
+	if reduced_motion:
+		hide()
+		closed.emit()
+		return
+	if lab_tween and lab_tween.is_running(): lab_tween.kill()
+	lab_tween = create_tween()
+	lab_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	lab_tween.tween_property(root_panel, "modulate:a", 0.0, 0.16)
+	lab_tween.finished.connect(func(): hide(); root_panel.modulate.a = 1.0; closed.emit())
+
+func _process(_delta: float) -> void:
+	if reset_pending and Time.get_ticks_msec() > reset_deadline:
+		reset_pending = false
+		reset_button.text = "Restaurar escenario"
 
 func _input(event: InputEvent) -> void:
-    if not visible or not event is InputEventKey or not event.pressed or event.echo: return
-    if event.keycode == KEY_ESCAPE:
-        close_lab()
-        get_viewport().set_input_as_handled()
-    if event.keycode == KEY_ENTER and event.ctrl_pressed:
-        match tabs.current_tab:
-            0: _run("query", query_input.text)
-            1: _run("login", user_input.text, pass_input.text)
-            2: _run("search", search_input.text)
-            3: _run("boolean", predicate_input.text)
-            4: _test_patch()
-            5: _report()
-        get_viewport().set_input_as_handled()
+	if not visible or not event is InputEventKey or not event.pressed or event.echo: return
+	if event.keycode == KEY_ESCAPE:
+		close_lab()
+		get_viewport().set_input_as_handled()

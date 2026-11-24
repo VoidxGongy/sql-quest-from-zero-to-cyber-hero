@@ -2,8 +2,8 @@ class_name QuestWorld
 extends Node2D
 const SIZE := Vector2i(30, 21)
 const TILE := 32
-const NAMES := ["Casa · el comienzo", "Universidad · campus norte", "CyberAcademy · aula Byte", "Laboratorio de bases de datos", "Centro de simulaciones", "Aurora Tech · prácticas", "Centro de operaciones · SOC", "Aurora Tech · entrevista"]
-const NPC := ["Nova", "Nova", "Profesor Byte", "Profesor Byte", "Zero", "Director Kernel", "Zero", "Alex"]
+const NAMES := ["Casa · el comienzo", "Universidad · campus norte", "CyberAcademy · aula Byte", "Laboratorio · Login SQLi", "Centro · UNION y ORDER BY", "Aurora Tech · prácticas", "SOC · Blind SQL Injection", "Arena final · NullSec"]
+const NPC := ["Nova", "Nova", "Profesor Byte", "Profesor Byte", "Profesor Byte", "Director Kernel", "Profesor Byte", "Profesor Byte"]
 const CHARACTER_ANIMATIONS := preload("res://assets/characters/animation_frames.png")
 const NPC_SHEET := preload("res://assets/characters/npc_and_hacker_sheet.png")
 const PROFESSOR_SHEET := preload("res://assets/characters/professor_walk_sheet.png")

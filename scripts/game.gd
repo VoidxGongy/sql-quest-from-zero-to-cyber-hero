@@ -34,6 +34,7 @@ var dialogue_lines: Array = []
 var dialogue_index := 0
 var dialogue_clock := 0.0
 var dialogue_portrait_clock := 0.0
+var dialogue_after := Callable()
 var dialogue_active := false
 var transition: ColorRect
 var transition_busy := false
@@ -47,6 +48,7 @@ var music_volume := 0.55
 var effects_volume := 0.65
 var reduce_motion := false
 var new_game_confirm := false
+var overlay_tween: Tween
 
 func _ready() -> void:
     RenderingServer.set_default_clear_color(Color("091522"))
@@ -80,13 +82,14 @@ func _ready() -> void:
     ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
     ui.theme = UI.theme()
-    ui.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+    ui.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
     canvas.add_child(ui)
     _build_hud()
     lab = Lab.new()
     lab.campaign = campaign
     ui.add_child(lab)
     lab.closed.connect(func(): hero.act(Hero.State.IDLE, 0); _save())
+    lab.lesson_progress.connect(func(): if started: _save())
     lab.performed.connect(func(success):
         audio.sfx("key" if success else "error")
         hero.act(Hero.State.WORK if success else Hero.State.ERROR, 0.5)
@@ -112,14 +115,20 @@ func _ready() -> void:
     ui.add_child(transition)
     campaign.changed.connect(_refresh)
     campaign.mission_completed.connect(_completed)
+    get_viewport().size_changed.connect(_layout_ui)
     _main_menu()
     _refresh()
+    _layout_ui()
     get_tree().auto_accept_quit = false
 
 func _build_hud() -> void:
     hud = VBoxContainer.new()
-    hud.position = Vector2(24, 16)
-    hud.size = Vector2(1104, 110)
+    hud.set_anchors_preset(Control.PRESET_TOP_WIDE)
+    hud.offset_left = 24
+    hud.offset_top = 16
+    hud.offset_right = -24
+    hud.offset_bottom = 112
+    hud.custom_minimum_size.y = 96
     hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
     ui.add_child(hud)
     var panel := PanelContainer.new()
@@ -145,12 +154,18 @@ func _build_hud() -> void:
     xp_bar.max_value = 250
     hud.add_child(xp_bar)
     prompt = UI.label(ui, "", 17, UI.GREEN)
-    prompt.position = Vector2(120, 595)
-    prompt.size = Vector2(912, 30)
+    prompt.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+    prompt.offset_left = -460
+    prompt.offset_top = -116
+    prompt.offset_right = 460
+    prompt.offset_bottom = -82
     prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     notice = UI.label(ui, "", 16)
-    notice.position = Vector2(40, 632)
-    notice.size = Vector2(1072, 55)
+    notice.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+    notice.offset_left = 40
+    notice.offset_top = -76
+    notice.offset_right = -40
+    notice.offset_bottom = -18
     notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
@@ -170,7 +185,7 @@ func _main_menu() -> void:
     margin.add_child(menu_box)
     UI.label(menu_box, "SQL\nQUEST", 76, UI.GREEN)
     UI.label(menu_box, "FROM ZERO TO CYBER HERO", 20)
-    UI.paragraph(menu_box, "Tu primer SELECT. Tu primera investigación.\nEl trabajo que siempre imaginaste.", 18)
+    UI.paragraph(menu_box, "Aprende a detectar SQL Injection.\nInvestiga, demuestra y corrige código inseguro.", 18)
     var spacer := Control.new()
     spacer.custom_minimum_size.y = 12
     menu_box.add_child(spacer)
@@ -196,7 +211,7 @@ func _main_menu() -> void:
     art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
     right.add_child(art)
     UI.label(right, "Una aventura de aprender haciendo", 21, UI.GREEN)
-    UI.paragraph(right, "Explora 8 espacios. Escribe consultas.\nInvestiga sistemas ficticios. Repara el código.\nDemuestra lo que sabes en tu entrevista final.", 17)
+    UI.paragraph(right, "Explora CyberAcademy.\nInvestiga ataques SQL Injection autorizados.\nProtege el sistema antes del desafío NullSec.", 17)
     UI.paragraph(right, "WASD / flechas · caminar\nE · interactuar   J · diario   Tab · mapa\nP · perfil   I · inventario   K · conocimientos", 15)
     menu.show()
     hud.hide()
@@ -226,13 +241,7 @@ func _new_game() -> void:
     room = 2
     hero.position = Vector2(14.5, 12.5) * 32
     _start()
-    _dialogue([
-        "Profesor Byte: ¡Bienvenida a CyberAcademy! Hoy aprenderás a leer datos sin cambiar nada.",
-        "Profesor Byte: SELECT elige las columnas; FROM indica la tabla. La demostración muestra estudiantes ficticios.",
-        "Profesor Byte: WHERE filtra filas. Si la condición coincide, verás menos resultados.",
-        "Nova: Ahora prueba algo parecido en la terminal iluminada. En Esquema puedes consultar las tablas.",
-        "Profesor Byte: Tu objetivo es encontrar únicamente mi registro de Nova. Puedes pedir pistas y volver a intentarlo."
-    ], "SELECT nombre FROM estudiantes;\n→ Leo · Nova · Ada · Iris\n\nSELECT nombre FROM estudiantes WHERE carrera = 'Sistemas';\n→ 3 filas · solo estudiantes de Sistemas")
+    _brief_current()
     _save()
 
 func _continue() -> void:
@@ -260,8 +269,8 @@ func _start() -> void:
     _refresh()
 
 func _unlocked() -> int:
-    if campaign.current >= 7: return 7
-    if campaign.current >= 4: return 6
+    if campaign.current >= 4: return 7
+    if campaign.current >= 3: return 6
     if campaign.current >= 2: return 4
     if campaign.current >= 1: return 3
     return 2
@@ -306,6 +315,30 @@ func _process(delta: float) -> void:
         _save()
     queue_redraw()
 
+func _layout_ui() -> void:
+    if ui == null: return
+    var viewport_size := get_viewport_rect().size
+    var width := minf(810.0, maxf(460.0, viewport_size.x - 32.0))
+    var height := minf(540.0, maxf(320.0, viewport_size.y - 32.0))
+    overlay.set_anchors_preset(Control.PRESET_CENTER)
+    overlay.offset_left = -width * 0.5
+    overlay.offset_top = -height * 0.5
+    overlay.offset_right = width * 0.5
+    overlay.offset_bottom = height * 0.5
+    prompt.offset_left = -minf(460.0, viewport_size.x * 0.42)
+    prompt.offset_right = minf(460.0, viewport_size.x * 0.42)
+
+func _brief_current(after := Callable()) -> void:
+    if campaign.current >= campaign.missions.size():
+        _dialogue(["Profesor Byte: La campaña SQL Injection terminó. Revisa tu certificación y practica con autorización."], "", after)
+        return
+    campaign.brief_current()
+    _dialogue([
+        "Profesor Byte: ¡Bienvenido! Una aplicación puede ser engañada si no separa los datos de las instrucciones SQL.",
+        "Profesor Byte: Investigaremos un sistema ficticio. Primero te mostraré qué ocurre y después lo intentarás tú.",
+        "Profesor Byte: Acércate a la terminal; allí practicaremos paso a paso, sin penalizaciones."
+    ], "", after)
+
 func _unhandled_key_input(event: InputEvent) -> void:
     if not event is InputEventKey or not event.pressed or event.echo: return
     if lab.visible: return
@@ -329,14 +362,15 @@ func _interact() -> void:
         "npc":
             hero.act(Hero.State.INTERVIEW if room == 7 else Hero.State.IDLE, 1)
             if campaign.current < campaign.missions.size():
-                _dialogue([world.NPC[room] + ": " + campaign.mission().lesson,
-                    "Tu objetivo: " + campaign.mission().objective,
-                    "Nova: Cada terminal es un entorno autorizado. El diario marca tu destino; no pierdes experiencia por equivocarte."],
-                    "SELECT nombre FROM estudiantes;\n→ Lee primero los datos.\n\nWHERE condicion;\n→ Reduce las filas que coinciden." if room == 2 and campaign.current == 0 else "")
+                if room == int(campaign.mission().room): _brief_current()
+                else: _dialogue([world.NPC[room] + ": El siguiente laboratorio se encuentra en " + world.NAMES[int(campaign.mission().room)] + "."])
             else: _dialogue(["Alex: Bienvenido al equipo de seguridad. Tu expediente demuestra que sabes investigar, reparar y comprobar."])
         "terminal":
             if campaign.current < campaign.missions.size() and room != int(campaign.mission().room):
                 _notify("Tu práctica está en " + world.NAMES[int(campaign.mission().room)] + ". Consulta el mapa.")
+            elif campaign.current < campaign.missions.size() and campaign.current not in campaign.briefed:
+                hero.act(Hero.State.WORK, 10000)
+                _brief_current(func(): lab.open_lab())
             else: hero.act(Hero.State.WORK, 10000); lab.open_lab()
         "previous":
             if room > 0: _travel(room - 1, true)
@@ -385,9 +419,10 @@ func _panel(title: String) -> VBoxContainer:
     overlay.show()
     return overlay_box
 
-func _dialogue(lines: Array, demo: String = "") -> void:
+func _dialogue(lines: Array, demo: String = "", after := Callable()) -> void:
     dialogue_lines = lines
     dialogue_index = 0
+    dialogue_after = after
     dialogue_active = true
     var box := _panel("Conversación · CyberAcademy")
     overlay.add_theme_stylebox_override("panel", UI.texture_style(preload("res://assets/ui/dialogue_frame.png"), 22))
@@ -434,6 +469,11 @@ func _dialogue(lines: Array, demo: String = "") -> void:
     UI.button(box, "Continuar · E / Espacio", _advance_dialogue).grab_focus()
     UI.button(box, "Volver a explorar", _close_overlay)
     _show_line()
+    overlay.modulate.a = 0.0
+    if overlay_tween and overlay_tween.is_running(): overlay_tween.kill()
+    overlay_tween = create_tween()
+    overlay_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    overlay_tween.tween_property(overlay, "modulate:a", 1.0, 0.18 if not reduce_motion else 0.0)
 
 func _show_line() -> void:
     var line := str(dialogue_lines[dialogue_index])
@@ -475,13 +515,18 @@ func _advance_dialogue() -> void:
         dialogue_label.visible_characters = -1
         return
     dialogue_index += 1
-    if dialogue_index >= dialogue_lines.size(): _close_overlay()
+    if dialogue_index >= dialogue_lines.size():
+        var callback := dialogue_after
+        dialogue_after = Callable()
+        _close_overlay()
+        if callback.is_valid(): callback.call()
     else: _show_line()
 
 func _close_overlay() -> void:
     overlay.hide()
     dialogue_active = false
     dialogue_portrait_frames.clear()
+    dialogue_after = Callable()
 
 func _notebook(page: String) -> void:
     if not started or lab.visible or menu.visible: return
@@ -511,7 +556,7 @@ func _notebook(page: String) -> void:
             UI.paragraph(box, "%d XP · nivel %d · %d/%d misiones" % [campaign.xp, 1 + campaign.xp / 250, campaign.completed.size(), campaign.missions.size()])
             for i in campaign.completed:
                 UI.paragraph(box, campaign.missions[int(i)].badge + " · " + campaign.missions[int(i)].rank)
-            if campaign.completed.is_empty(): UI.paragraph(box, "Tu expediente comienza con una consulta. Byte te espera.")
+            if campaign.completed.is_empty(): UI.paragraph(box, "Tu expediente comienza con una investigación de SQL Injection. Byte te espera.")
             for key in campaign.reports:
                 UI.paragraph(box, "Informe · " + campaign.missions[int(key)].title, 18)
                 UI.paragraph(box, campaign.reports[key], 14)
@@ -521,7 +566,7 @@ func _notebook(page: String) -> void:
             for i in campaign.completed: UI.paragraph(box, "Insignia: " + campaign.missions[int(i)].badge)
         "Conocimientos":
             UI.paragraph(box, "Biblioteca de campo", 22)
-            UI.paragraph(box, "SELECT columnas FROM tabla WHERE condición;\nTexto entre comillas simples. AND tiene prioridad sobre OR.\nEn el laboratorio, Esquema contiene la referencia completa.")
+            UI.paragraph(box, "SQL Injection separa datos de estructura.\nLogin: parámetros. Búsqueda: LIKE con comodines dentro del valor.\nORDER BY: lista blanca. Blind: parámetros y autorización.\nNunca pruebes sistemas sin autorización.")
             for i in range(mini(campaign.current + 1, campaign.missions.size())):
                 UI.paragraph(box, campaign.missions[i].title, 19)
                 UI.paragraph(box, campaign.missions[i].lesson)
