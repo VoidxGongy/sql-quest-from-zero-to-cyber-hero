@@ -14,12 +14,14 @@ var hero: QuestHero
 var audio: QuestAudio
 var lab: QuestLab
 var camera: Camera2D
+var touch_controls: Control
 var ui: Control
 var hud: VBoxContainer
 var hud_title: Label
 var hud_mission: Label
 var xp_bar: ProgressBar
 var prompt: Label
+var help_bar: Label
 var notice: Label
 var menu: PanelContainer
 var menu_box: VBoxContainer
@@ -46,16 +48,24 @@ var save_clock := 0.0
 var room := 2
 var music_volume := 0.55
 var effects_volume := 0.65
+var master_volume := 1.0
+var music_enabled := true
+var effects_enabled := true
 var reduce_motion := false
 var new_game_confirm := false
 var overlay_tween: Tween
 
 func _ready() -> void:
     RenderingServer.set_default_clear_color(Color("091522"))
+    for action in ["touch_up", "touch_down", "touch_left", "touch_right"]:
+        if not InputMap.has_action(action): InputMap.add_action(action)
     var preferences := ConfigFile.new()
     if preferences.load("user://settings.cfg") == OK:
         music_volume = clampf(float(preferences.get_value("audio", "music", 0.55)), 0, 1)
         effects_volume = clampf(float(preferences.get_value("audio", "effects", 0.65)), 0, 1)
+        master_volume = clampf(float(preferences.get_value("audio", "master", 1.0)), 0, 1)
+        music_enabled = bool(preferences.get_value("audio", "music_enabled", true))
+        effects_enabled = bool(preferences.get_value("audio", "effects_enabled", true))
         reduce_motion = bool(preferences.get_value("display", "reduce_motion", false))
     world = World.new()
     add_child(world)
@@ -73,8 +83,7 @@ func _ready() -> void:
     camera.make_current()
     audio = Audio.new()
     add_child(audio)
-    audio.set_volumes(music_volume, effects_volume)
-    audio.change_track(0)
+    _apply_audio_settings()
     hero.stepped.connect(func(): audio.sfx("step"))
     var canvas := CanvasLayer.new()
     add_child(canvas)
@@ -85,11 +94,15 @@ func _ready() -> void:
     ui.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
     canvas.add_child(ui)
     _build_hud()
+    _build_touch_controls()
     lab = Lab.new()
     lab.campaign = campaign
     ui.add_child(lab)
-    lab.closed.connect(func(): hero.act(Hero.State.IDLE, 0); _save())
-    lab.lesson_progress.connect(func(): if started: _save())
+    lab.closed.connect(func(): hero.act(Hero.State.IDLE, 0); audio.change_track(room); _save())
+    lab.lesson_progress.connect(func():
+        if started:
+            _sync_lab_music()
+            _save())
     lab.performed.connect(func(success):
         audio.sfx("key" if success else "error")
         hero.act(Hero.State.WORK if success else Hero.State.ERROR, 0.5)
@@ -105,7 +118,7 @@ func _ready() -> void:
     overlay.hide()
     menu = PanelContainer.new()
     menu.set_anchors_preset(Control.PRESET_FULL_RECT)
-    menu.add_theme_stylebox_override("panel", UI.style(Color(0.025, 0.055, 0.10, 0.92), Color("253a50")))
+    menu.add_theme_stylebox_override("panel", UI.style(Color(0.025, 0.045, 0.085, 0.96), Color("253a50")))
     ui.add_child(menu)
     transition = ColorRect.new()
     transition.color = Color("07111f")
@@ -120,6 +133,30 @@ func _ready() -> void:
     _refresh()
     _layout_ui()
     get_tree().auto_accept_quit = false
+
+func _build_touch_controls() -> void:
+    touch_controls = Control.new()
+    touch_controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    touch_controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    ui.add_child(touch_controls)
+    for item in [["↑", "touch_up", 76, -180], ["←", "touch_left", 16, -120], ["↓", "touch_down", 76, -120], ["→", "touch_right", 136, -120]]:
+        var button := Button.new()
+        button.text = item[0]
+        button.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+        button.position = Vector2(item[2], item[3])
+        button.size = Vector2(56, 56)
+        var action: String = item[1]
+        button.button_down.connect(func(): Input.action_press(action))
+        button.button_up.connect(func(): Input.action_release(action))
+        touch_controls.add_child(button)
+    var interact := Button.new()
+    interact.text = "E"
+    interact.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+    interact.position = Vector2(-100, -126)
+    interact.size = Vector2(72, 72)
+    interact.pressed.connect(_interact)
+    touch_controls.add_child(interact)
+    touch_controls.hide()
 
 func _build_hud() -> void:
     hud = VBoxContainer.new()
@@ -145,6 +182,7 @@ func _build_hud() -> void:
         label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
         label.clip_text = true
     UI.button(row, "Diario · J", func(): _notebook("Diario"))
+    UI.button(row, "Reanudar misión", _resume_mission)
     UI.button(row, "Mapa · Tab", func(): _notebook("Mapa"))
     UI.button(row, "Perfil · P", func(): _notebook("Perfil"))
     UI.button(row, "Pausa · Esc", _pause)
@@ -154,12 +192,21 @@ func _build_hud() -> void:
     xp_bar.max_value = 250
     hud.add_child(xp_bar)
     prompt = UI.label(ui, "", 17, UI.GREEN)
-    prompt.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-    prompt.offset_left = -460
-    prompt.offset_top = -116
-    prompt.offset_right = 460
-    prompt.offset_bottom = -82
+    prompt.set_anchors_preset(Control.PRESET_TOP_LEFT)
+    prompt.custom_minimum_size = Vector2(360, 32)
+    prompt.size = Vector2(360, 32)
     prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    prompt.add_theme_stylebox_override("normal", UI.style(Color(0.04, 0.07, 0.11, 0.92), Color("45627b")))
+    prompt.add_theme_color_override("font_color", Color("ffffff"))
+    help_bar = UI.label(ui, "WASD / flechas: moverse   |   E: interactuar   |   J: diario   |   Tab: mapa   |   Esc: pausa", 15, Color.WHITE)
+    help_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+    help_bar.offset_left = 24
+    help_bar.offset_right = -24
+    help_bar.offset_top = -38
+    help_bar.offset_bottom = -8
+    help_bar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    help_bar.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    help_bar.add_theme_stylebox_override("normal", UI.style(Color(0.03, 0.05, 0.08, 0.94), Color("45627b")))
     notice = UI.label(ui, "", 16)
     notice.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
     notice.offset_left = 40
@@ -172,50 +219,72 @@ func _build_hud() -> void:
 func _main_menu() -> void:
     _clear_menu()
     var columns := HBoxContainer.new()
-    columns.add_theme_constant_override("separation", 65)
+    columns.add_theme_constant_override("separation", 48)
     menu.add_child(columns)
     var margin := MarginContainer.new()
-    margin.add_theme_constant_override("margin_left", 65)
-    margin.add_theme_constant_override("margin_top", 100)
-    margin.add_theme_constant_override("margin_bottom", 70)
+    margin.add_theme_constant_override("margin_left", 70)
+    margin.add_theme_constant_override("margin_top", 75)
+    margin.add_theme_constant_override("margin_bottom", 54)
     columns.add_child(margin)
     menu_box = VBoxContainer.new()
-    menu_box.custom_minimum_size.x = 470
-    menu_box.add_theme_constant_override("separation", 14)
+    menu_box.custom_minimum_size.x = 490
+    menu_box.add_theme_constant_override("separation", 10)
     margin.add_child(menu_box)
-    UI.label(menu_box, "SQL\nQUEST", 76, UI.GREEN)
-    UI.label(menu_box, "FROM ZERO TO CYBER HERO", 20)
-    UI.paragraph(menu_box, "Aprende a detectar SQL Injection.\nInvestiga, demuestra y corrige código inseguro.", 18)
+    UI.label(menu_box, "C Y B E R A C A D E M Y   /   0 1", 15, Color("58a6ff"))
+    var logo := UI.label(menu_box, "SQL QUEST", 78, Color("a8f3cb"))
+    logo.add_theme_color_override("font_shadow_color", Color("187260"))
+    logo.add_theme_constant_override("shadow_offset_x", 3)
+    logo.add_theme_constant_override("shadow_offset_y", 4)
+    UI.label(menu_box, "FROM ZERO TO CYBER HERO", 19, Color("8cb8d7"))
+    UI.paragraph(menu_box, "Una aventura RPG de ciberseguridad.\nInvestiga, experimenta y protege los sistemas.", 18)
     var spacer := Control.new()
     spacer.custom_minimum_size.y = 12
     menu_box.add_child(spacer)
     var saved := save_store.read()
-    var continue_button := UI.button(menu_box, "Continuar aventura", _continue)
+    var continue_button := _menu_button("Continuar aventura", _continue)
     continue_button.disabled = saved.is_empty()
-    var new_button := UI.button(menu_box, "Nueva aventura", _request_new)
-    UI.button(menu_box, "Audio y accesibilidad", _settings)
-    UI.button(menu_box, "Salir", _quit)
+    var new_button := _menu_button("Nueva aventura", _request_new)
+    _menu_button("Audio y accesibilidad", _settings)
+    _menu_button("Salir", _quit)
     new_button.grab_focus() if saved.is_empty() else continue_button.grab_focus()
+    var right_panel := PanelContainer.new()
+    right_panel.custom_minimum_size = Vector2(420, 470)
+    right_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    right_panel.add_theme_stylebox_override("panel", UI.style(Color("102337"), Color("355d74"), 2))
+    columns.add_child(right_panel)
+    var right_margin := MarginContainer.new()
+    for edge in ["left", "right", "top", "bottom"]: right_margin.add_theme_constant_override("margin_" + edge, 24)
+    right_panel.add_child(right_margin)
     var right := VBoxContainer.new()
-    right.custom_minimum_size.x = 400
+    right.add_theme_constant_override("separation", 12)
     right.alignment = BoxContainer.ALIGNMENT_CENTER
-    columns.add_child(right)
+    right_margin.add_child(right)
+    UI.label(right, "AUDITOR EN ENTRENAMIENTO", 15, Color("58a6ff"))
     var art := TextureRect.new()
     var region := AtlasTexture.new()
     region.atlas = preload("res://assets/characters/protagonist_walk_sheet.png")
     region.region = Rect2(0, 0, 287.0 / 4.0, 280.0 / 3.0)
     art.texture = region
     art.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-    art.custom_minimum_size = Vector2(220, 260)
+    art.custom_minimum_size = Vector2(245, 270)
     art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
     right.add_child(art)
-    UI.label(right, "Una aventura de aprender haciendo", 21, UI.GREEN)
-    UI.paragraph(right, "Explora CyberAcademy.\nInvestiga ataques SQL Injection autorizados.\nProtege el sistema antes del desafío NullSec.", 17)
-    UI.paragraph(right, "WASD / flechas · caminar\nE · interactuar   J · diario   Tab · mapa\nP · perfil   I · inventario   K · conocimientos", 15)
+    UI.label(right, "TU MISIÓN COMIENZA AQUÍ", 21, UI.GREEN)
+    UI.paragraph(right, "Explora CyberAcademy, investiga ataques simulados y defiende sus sistemas.", 17)
+    UI.label(right, "EXPLORA  /  INVESTIGA  /  PROTEGE", 14, Color("8cb8d7"))
     menu.show()
     hud.hide()
     prompt.hide()
+
+func _menu_button(text: String, callback: Callable) -> Button:
+    var button := UI.button(menu_box, text, callback)
+    button.custom_minimum_size.y = 48
+    button.add_theme_font_size_override("font_size", 18)
+    button.add_theme_stylebox_override("normal", UI.style(Color("1b344b"), Color("47647c"), 1))
+    button.add_theme_stylebox_override("hover", UI.style(Color("28536a"), Color("6dcdb7"), 2))
+    button.add_theme_stylebox_override("pressed", UI.style(Color("21604f"), Color("94e1b0"), 2))
+    return button
 
 func _clear_menu() -> void:
     for child in menu.get_children(): menu.remove_child(child); child.queue_free()
@@ -238,10 +307,10 @@ func _new_game() -> void:
     new_game_confirm = false
     campaign.restore(Campaign.new().serialize())
     lab.shown_mission = -1
-    room = 2
-    hero.position = Vector2(14.5, 12.5) * 32
+    room = 0
+    hero.position = Vector2(445, 405)
     _start()
-    _brief_current()
+    _notify("Revisa el mensaje en tu computador y sal al campus.")
     _save()
 
 func _continue() -> void:
@@ -252,7 +321,7 @@ func _continue() -> void:
     var p = data.get("position", [464, 400])
     hero.position = Vector2(float(p[0]), float(p[1])) if p is Array and p.size() == 2 else Vector2(464, 400)
     _start()
-    if not world.walkable(hero.position): hero.position = Vector2(14.5, 12.5) * 32
+    if not world.walkable(hero.position): hero.position = Vector2(445, 405) if room == 0 else Vector2(14.5, 12.5) * 32
     _notify("Partida recuperada. Tu próxima evidencia te espera.")
 
 func _start() -> void:
@@ -264,7 +333,7 @@ func _start() -> void:
     world.setup(room)
     world.unlocked = _unlocked()
     world.chip_visible = room not in campaign.collected
-    audio.set_volumes(music_volume, effects_volume)
+    _apply_audio_settings()
     audio.change_track(room)
     _refresh()
 
@@ -288,7 +357,18 @@ func _process(delta: float) -> void:
     time += delta
     save_clock += delta
     hero.locked = not started or menu.visible or overlay.visible or lab.visible or transition_busy
-    camera.position = Vector2(480, 320) + (hero.position - Vector2(480, 336)) * 0.25
+    camera.zoom = Vector2(2.0, 2.0) if room == 0 else Vector2(1.34, 1.34)
+    if room == 0:
+        camera.position = Vector2(480, 330)
+    else:
+        var half_view := get_viewport_rect().size / camera.zoom / 2.0
+        var bounds := world.CAMPUS_SIZE if room == 1 else Vector2(960, 672)
+        var target := hero.position if room == 1 else Vector2(480, 320) + (hero.position - Vector2(480, 336)) * 0.25
+        camera.position = Vector2(clampf(target.x, minf(bounds.x / 2, half_view.x), maxf(bounds.x / 2, bounds.x - half_view.x)), clampf(target.y, minf(bounds.y / 2, half_view.y), maxf(bounds.y / 2, bounds.y - half_view.y)))
+    var show_touch := DisplayServer.is_touchscreen_available() and started and not hero.locked
+    if touch_controls.visible and not show_touch:
+        for action in ["touch_up", "touch_down", "touch_left", "touch_right"]: Input.action_release(action)
+    touch_controls.visible = show_touch
     world.reduced_motion = reduce_motion
     if dialogue_active and dialogue_label != null:
         dialogue_clock += delta * 42
@@ -302,14 +382,26 @@ func _process(delta: float) -> void:
     if started and not hero.locked:
         var near := world.interaction(hero.position)
         match near:
-            "npc": prompt.text = "E · Conversar con " + world.NPC[room]
-            "terminal": prompt.text = "E · Abrir laboratorio SQL"
-            "previous": prompt.text = "E · " + (world.NAMES[room - 1] if room > 0 else "Aquí comienza tu historia")
-            "next": prompt.text = "E · " + (world.NAMES[room + 1] if room < world.unlocked else "Acceso pendiente · avanza en tu misión")
+            "bedroom_message": prompt.text = "[E] Revisar mensaje"
+            "bedroom_exit": prompt.text = "[E] Salir al campus"
+            "academy_entry": prompt.text = "[E] Entrar a CyberAcademy"
+            "campus_exit": prompt.text = "[E] Salir al campus"
+            "npc": prompt.text = "[E] Hablar con " + world.NPC[room]
+            "terminal": prompt.text = _terminal_prompt()
+            "previous": prompt.text = "[E] Salir a " + (world.NAMES[room - 1] if room > 0 else "el inicio")
+            "next": prompt.text = "[E] " + (world.NAMES[room + 1] if room < world.unlocked else "Acceso pendiente · avanza en tu misión")
             "chip": prompt.text = "E · Recoger chip de conocimiento (+25 XP)"
             "books": prompt.text = "E · Consultar biblioteca"
-            _: prompt.text = "WASD / flechas · caminar     E · interactuar     J · objetivo     Tab · mapa"
-    elif prompt: prompt.text = ""
+            _: prompt.text = ""
+        prompt.visible = not prompt.text.is_empty()
+        var player_screen := hero.get_global_transform_with_canvas().origin
+        var viewport_size := get_viewport_rect().size
+        prompt.position = Vector2(clampf(player_screen.x - 180, 8, maxf(8, viewport_size.x - 368)), clampf(player_screen.y - 100, 84, maxf(84, viewport_size.y - 85)))
+        help_bar.visible = true
+    elif prompt:
+        prompt.text = ""
+        prompt.hide()
+        help_bar.hide()
     if save_clock > 25 and started:
         save_clock = 0
         _save()
@@ -325,8 +417,6 @@ func _layout_ui() -> void:
     overlay.offset_top = -height * 0.5
     overlay.offset_right = width * 0.5
     overlay.offset_bottom = height * 0.5
-    prompt.offset_left = -minf(460.0, viewport_size.x * 0.42)
-    prompt.offset_right = minf(460.0, viewport_size.x * 0.42)
 
 func _brief_current(after := Callable()) -> void:
     if campaign.current >= campaign.missions.size():
@@ -359,19 +449,23 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func _interact() -> void:
     match world.interaction(hero.position):
+        "bedroom_message":
+            _dialogue(["Mensaje de CyberAcademy: ¡Tu primera jornada como auditor comienza hoy!", "Mensaje de CyberAcademy: Visita el aula del Profesor Byte. Aprenderás a reconocer y prevenir la inyección SQL.", "Mensaje de CyberAcademy: Sal por la puerta y cruza el campus hasta la entrada de la academia."])
+        "bedroom_exit":
+            _travel(1, false, Vector2(180, 368))
+        "academy_entry":
+            _travel(2, false, Vector2(480, 600))
+        "campus_exit":
+            _travel(1, false, Vector2(480, 370))
         "npc":
+            world.begin_npc_interaction(hero.position)
             hero.act(Hero.State.INTERVIEW if room == 7 else Hero.State.IDLE, 1)
             if campaign.current < campaign.missions.size():
                 if room == int(campaign.mission().room): _brief_current()
                 else: _dialogue([world.NPC[room] + ": El siguiente laboratorio se encuentra en " + world.NAMES[int(campaign.mission().room)] + "."])
             else: _dialogue(["Alex: Bienvenido al equipo de seguridad. Tu expediente demuestra que sabes investigar, reparar y comprobar."])
         "terminal":
-            if campaign.current < campaign.missions.size() and room != int(campaign.mission().room):
-                _notify("Tu práctica está en " + world.NAMES[int(campaign.mission().room)] + ". Consulta el mapa.")
-            elif campaign.current < campaign.missions.size() and campaign.current not in campaign.briefed:
-                hero.act(Hero.State.WORK, 10000)
-                _brief_current(func(): lab.open_lab())
-            else: hero.act(Hero.State.WORK, 10000); lab.open_lab()
+            _resume_mission()
         "previous":
             if room > 0: _travel(room - 1, true)
         "next":
@@ -385,7 +479,42 @@ func _interact() -> void:
                 _save()
         "books": _notebook("Conocimientos")
 
-func _travel(destination: int, from_right: bool = false) -> void:
+func _terminal_prompt() -> String:
+    if campaign.current >= campaign.missions.size(): return "[E] Revisar resultados"
+    var saved: Dictionary = campaign.lessons.get(str(campaign.current), {})
+    var stage := int(saved.get("stage", 0))
+    if stage > 0 or not saved.is_empty(): return "[E] Continuar misión"
+    return "[E] Abrir laboratorio de SQL Injection"
+
+func _resume_mission() -> void:
+    if not started or menu.visible or lab.visible or transition_busy: return
+    if overlay.visible: _close_overlay()
+    if room == 0:
+        _dialogue(["Mensaje de CyberAcademy: Sal de tu cuarto y busca el aula del Profesor Byte para comenzar la misión."])
+        return
+    if campaign.current >= campaign.missions.size():
+        _dialogue(["Profesor Byte: Completaste las cinco misiones. Abre tu perfil para consultar tus insignias y el informe final."])
+        return
+    if campaign.current not in campaign.briefed:
+        _brief_current(_open_mission_lab)
+    else:
+        _open_mission_lab()
+
+func _open_mission_lab() -> void:
+    # Only lock the hero after the player actually opens the laboratory.
+    hero.act(Hero.State.WORK, 10000)
+    lab.open_lab()
+    _sync_lab_music()
+
+func _sync_lab_music() -> void:
+    if not lab.visible or campaign.current >= campaign.missions.size(): return
+    var stage := int(campaign.lesson_state().stage)
+    if campaign.mission().kind == "final": audio.change_track(7)
+    elif stage >= 4: audio.change_track(5)
+    elif stage >= 2: audio.change_track(4)
+    else: audio.change_track(3)
+
+func _travel(destination: int, from_right: bool = false, spawn := Vector2(-1, -1)) -> void:
     if transition_busy or destination < 0 or destination > _unlocked(): return
     transition_busy = true
     _close_overlay()
@@ -396,7 +525,16 @@ func _travel(destination: int, from_right: bool = false) -> void:
     room = destination
     world.setup(room)
     world.chip_visible = room not in campaign.collected
-    hero.position = Vector2(27.5 if from_right else 2.5, 11.5) * 32
+    if spawn.x >= 0:
+        hero.position = spawn
+    elif room == 0:
+        hero.position = Vector2(610, 390)
+    elif room == 1:
+        hero.position = Vector2(750 if from_right else 180, 368)
+    elif room == 2:
+        hero.position = Vector2(480, 600)
+    else:
+        hero.position = Vector2(27.5 if from_right else 2.5, 11.5) * 32
     audio.change_track(room)
     _refresh()
     var fade := create_tween()
@@ -420,12 +558,13 @@ func _panel(title: String) -> VBoxContainer:
     return overlay_box
 
 func _dialogue(lines: Array, demo: String = "", after := Callable()) -> void:
+    audio.set_ducked(true)
     dialogue_lines = lines
     dialogue_index = 0
     dialogue_after = after
     dialogue_active = true
     var box := _panel("Conversación · CyberAcademy")
-    overlay.add_theme_stylebox_override("panel", UI.texture_style(preload("res://assets/ui/dialogue_frame.png"), 22))
+    overlay.add_theme_stylebox_override("panel", UI.style(Color("101b2a"), Color("45627b"), 2))
     var content := HBoxContainer.new()
     content.add_theme_constant_override("separation", 18)
     box.add_child(content)
@@ -524,6 +663,8 @@ func _advance_dialogue() -> void:
 
 func _close_overlay() -> void:
     overlay.hide()
+    if audio != null: audio.set_ducked(false)
+    if world != null: world.end_npc_interaction()
     dialogue_active = false
     dialogue_portrait_frames.clear()
     dialogue_after = Callable()
@@ -646,21 +787,31 @@ func _settings() -> void:
     menu_box.add_theme_constant_override("separation", 15)
     menu.add_child(menu_box)
     UI.label(menu_box, "Audio y accesibilidad", 36, UI.GREEN)
-    for kind in ["Música", "Efectos"]:
+    for kind in ["General", "Música", "Efectos"]:
         var level := UI.label(menu_box, kind, 20)
         var slider := HSlider.new()
         slider.min_value = 0
         slider.max_value = 1
         slider.step = 0.05
-        slider.value = music_volume if kind == "Música" else effects_volume
+        slider.value = master_volume if kind == "General" else (music_volume if kind == "Música" else effects_volume)
         menu_box.add_child(slider)
         level.text = kind + " · %d%%" % int(slider.value * 100)
         slider.value_changed.connect(func(value):
-            if kind == "Música": music_volume = value
+            if kind == "General": master_volume = value
+            elif kind == "Música": music_volume = value
             else: effects_volume = value
             level.text = kind + " · %d%%" % int(value * 100)
-            audio.set_volumes(music_volume, effects_volume)
+            _apply_audio_settings()
             if kind == "Efectos": audio.sfx("key"))
+    for kind in ["Música", "Efectos"]:
+        var toggle := CheckButton.new()
+        toggle.text = "Activar " + kind.to_lower()
+        toggle.button_pressed = music_enabled if kind == "Música" else effects_enabled
+        toggle.toggled.connect(func(value):
+            if kind == "Música": music_enabled = value
+            else: effects_enabled = value
+            _apply_audio_settings())
+        menu_box.add_child(toggle)
     var motion := CheckButton.new()
     motion.text = "Reducir movimiento y mostrar diálogos inmediatamente"
     motion.button_pressed = reduce_motion
@@ -670,11 +821,19 @@ func _settings() -> void:
         var preferences := ConfigFile.new()
         preferences.set_value("audio", "music", music_volume)
         preferences.set_value("audio", "effects", effects_volume)
+        preferences.set_value("audio", "master", master_volume)
+        preferences.set_value("audio", "music_enabled", music_enabled)
+        preferences.set_value("audio", "effects_enabled", effects_enabled)
         preferences.set_value("display", "reduce_motion", reduce_motion)
         if preferences.save("user://settings.cfg") != OK: _notify("No se pudieron guardar las preferencias.")
         if started: _save(); _pause()
         else: _main_menu())
     menu.show()
+
+func _apply_audio_settings() -> void:
+    var master := AudioServer.get_bus_index("Master")
+    if master >= 0: AudioServer.set_bus_volume_db(master, linear_to_db(maxf(master_volume, 0.0001)))
+    audio.set_volumes(music_volume if music_enabled else 0.0, effects_volume if effects_enabled else 0.0)
 
 func _save() -> void:
     if not started: return

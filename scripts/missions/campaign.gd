@@ -137,7 +137,7 @@ func _order_attack(sort_by: String, record := true) -> Dictionary:
 func _blind_attack(predicate: String, mode: String, record := true) -> Dictionary:
 	var query := "SELECT id FROM documentos WHERE " + predicate
 	var raw := db.execute(query, [], false)
-	var investigates_content := predicate.to_lower().contains("contenido")
+	var investigates_content: bool = raw.ok and predicate.to_lower().contains("contenido")
 	var has_signal: bool = raw.ok and not raw.rows.is_empty()
 	var result := {"ok": raw.ok, "rows": [], "columns": [], "error": raw.error, "query": query, "attack": investigates_content,
 		"signal": has_signal, "highlight": predicate, "input": predicate, "message": "Señal booleana: PRESENTE · latencia virtual: 850 ms" if has_signal else "Señal booleana: AUSENTE · latencia virtual: 40 ms"}

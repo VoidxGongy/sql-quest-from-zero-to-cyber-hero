@@ -1,5 +1,37 @@
 # Informe de verificación — SQL Quest: CyberGuard
 
+## Hotfix: terminal de misión en la mesa
+
+La mesa del aula se identifica con un marcador E, conserva su obstáculo y acepta interacción por proximidad desde el frente. La mesa y el botón del HUD usan el mismo flujo para abrir la misión activa, recuperar su etapa guardada o indicar que la campaña terminó. Se evitó activar el estado de trabajo antes de confirmar la apertura del laboratorio, para que cancelar el briefing no inmovilice al jugador.
+
+Pruebas ejecutadas: `GODOT_BIN=godot tests/run_tests.sh`: 18 del simulador, 31 de campaña y 72 de integración RPG sin fallos. La integración comprueba puntos de acceso hasta la mesa, colisión, indicador, evento E, apertura de login, cancelación del briefing, salida y reapertura durante práctica y verificación, apertura de la siguiente misión, las restantes misiones y finalización. Son pruebas automatizadas en Godot headless: no constituyen un recorrido visual completo con teclado en un navegador.
+
+Se regeneró la exportación Web y se comprobó por HTTP local la carga inicial y visibilidad del canvas. No se verificó manualmente dentro de Web cada interacción ni el diseño visual de todas las resoluciones. Godot mostró avisos de socket y objetos pendientes al cerrar las pruebas.
+
+## Actualización: colisiones del aula y controles de audio
+
+Se ajustaron obstáculos rectangulares independientes al arte de `classroom.png`: pizarra, estanterías, escritorio, mesas y plantas; la terminal de esa sala se situó junto al escritorio. Se sustituyeron las etiquetas pequeñas del mapa por una barra fija y mensajes contextuales. Se conectaron los reproductores a los buses Music/SFX, se añadieron controles de volumen general y activación, guardado de preferencias y atenuación durante diálogos; la música comienza al entrar a la partida.
+
+Pruebas ejecutadas con `GODOT_BIN=godot tests/run_tests.sh`: simulador 18/18, campaña 31/31 e integración 60/60. Se comprobaron puntos dentro de la estantería izquierda, pizarra, escritorio, mueble derecho y una mesa; también un punto transitable del pasillo y acceso por proximidad a Byte y a la terminal. Se comprobaron por estado los buses y la activación/restauración de atenuación, sin verificar el sonido audible. Godot 4.7.2 exportó el proyecto a Web y se abrió la página a través de HTTP local.
+
+Pendiente: las colisiones usan rectángulos y la función `walkable` del proyecto, no cuerpos físicos; no se han inspeccionado visualmente todos los bordes, puertas, mapas o profundidad Y en una partida real. La ilustración sigue siendo una imagen plana y no tiene capas Y-sort de muebles. No se creó una nueva banda sonora, ni se implementó un autoload global o todos los efectos solicitados; se conserva la generación musical existente. No se ha comprobado audio audible, autoplay, transiciones, preferencias ni rendimiento en navegador. La carga de la página no demuestra que se reproduzca sonido. No se realizó una nueva prueba con usuarios.
+
+## Actualización: NPC, movimiento y estados
+
+Diagnóstico: los NPC del mapa cambiaban fotogramas de caminata por tiempo sin desplazarse; el protagonista podía mantener `WALK` al chocar o bloquearse y el contador de pasos se reiniciaba cada fotograma; el marco gráfico del diálogo añadía líneas decorativas sobre el contenido; el estado de defensa podía quedar visualmente protegido después de alterar los bloques.
+
+Correcciones: NPC actualmente estáticos con estados de reposo e interacción, orientación lateral de Byte usando su hoja existente; protagonista en reposo al chocar o abrir una interfaz; marco de diálogo plano; y pruebas de defensa invalidadas al cambiar bloques. Los escenarios siguen usando la rejilla de colisiones existente.
+
+Pruebas ejecutadas: `GODOT_BIN=godot tests/run_tests.sh`: 18 comprobaciones del simulador, 31 de campaña y 50 de integración RPG, sin fallos. Incluyen reposo e interacción de Byte, bloqueo del protagonista, validación de estado al modificar la defensa y finalización de cinco misiones mediante acciones automatizadas. `git diff --check` y los diagnósticos de los scripts modificados no señalaron problemas. Exportación Web regenerada con Godot 4.7.2; carga inicial del canvas comprobada desde HTTP local.
+
+Límites pendientes: los NPC secundarios están quietos, no cuentan con patrullas; no se ha comprobado visualmente la profundidad Y ni la correspondencia completa entre la ilustración de fondo y las colisiones de muebles. Tampoco se revisó manualmente cada resolución, cada pantalla o un recorrido completo Web con ratón/táctil. Las demostraciones de desplazamiento de datos, pruebas paso a paso y escudo siguen sin implementarse por completo. Las pruebas son headless y no sustituyen pruebas de usabilidad con estudiantes reales. Godot emitió avisos de socket y objetos sin liberar al cerrar las pruebas.
+
+## Actualización: claridad para principiantes
+
+Se ampliaron las explicaciones de las cinco misiones, se añadió CyberStore con una demostración de UNION y una comparación persistente de la búsqueda normal con la manipulada, un objetivo actualizado por fase, progreso y ayudas contextuales. Los separadores y controles de navegación del laboratorio usan caracteres sencillos en lugar de flechas Unicode.
+
+Pruebas ejecutadas con Godot 4.7.2: `tests/run_tests.sh`, con 18 comprobaciones del simulador, 31 de campaña y 45 de integración RPG, todas superadas. La integración recorre la práctica normal, ataque, bloques y finalización de las cinco misiones mediante llamadas a los controles; incluye los resultados de CyberStore. Se exportó a Web y se cargó el canvas por HTTP local. No se realizó una nueva prueba con estudiantes reales ni se inspeccionó visualmente cada pantalla o resolución en el navegador; la carga inicial no demuestra que el juego completo funcione en todos los navegadores. Las animaciones siguen siendo principalmente de aparición progresiva de texto, no una representación completa de datos desplazándose entre nodos. Godot mostró avisos del socket de depuración y objetos pendientes al cerrar las pruebas headless.
+
 ## Actualización: tutor y bloques
 
 Se ejecutó `GODOT_BIN=godot tests/run_tests.sh`: simulador 18/18, campaña 31/31 e integración RPG 28/28. Se probaron los conjuntos seguros y un distractor inseguro para cada uno de los cinco niveles. En login se comprobó añadir bloques, cambiar su orden con botones, recibir un mensaje por concatenación insegura, retirar el bloque y completar la misión.

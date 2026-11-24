@@ -79,25 +79,36 @@ func _physics_process(delta: float) -> void:
 		if action_time <= 0.0:
 			state = State.IDLE
 			_apply_animation()
-	elif not locked:
+	elif locked:
+		if state == State.WALK:
+			state = State.IDLE
+			step_clock = 0.0
+			_apply_animation()
+	else:
 		var horizontal := float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT))
 		var vertical := float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP))
+		horizontal += Input.get_action_strength("touch_right") - Input.get_action_strength("touch_left")
+		vertical += Input.get_action_strength("touch_down") - Input.get_action_strength("touch_up")
 		var movement := Vector2(horizontal, vertical)
 		# Keep movement and orientation deterministic when two keys are held.
 		if not is_zero_approx(horizontal): movement.y = 0.0
 		if movement != Vector2.ZERO:
 			movement = movement.normalized()
 			_set_facing(movement)
-			state = State.WALK
 			var target := position + movement * SPEED * delta
-			if walk_test.is_valid() and walk_test.call(target): position = target
-			step_clock += delta
-			if step_clock > 0.32:
+			if walk_test.is_valid() and walk_test.call(target):
+				position = target
+				state = State.WALK
+				step_clock += delta
+				if step_clock > 0.32:
+					step_clock = 0.0
+					stepped.emit()
+			else:
+				state = State.IDLE
 				step_clock = 0.0
-				stepped.emit()
 		else:
 			state = State.IDLE
-		step_clock = 0.0
+			step_clock = 0.0
 		_apply_animation()
 
 func _set_facing(movement: Vector2) -> void:

@@ -27,6 +27,8 @@ var grid: GridContainer
 var body_scroll: ScrollContainer
 var title: Label
 var objective: Label
+var current_objective: Label
+var activity_progress: ProgressBar
 var lesson: Label
 var phase: Label
 var primary_input: LineEdit
@@ -37,6 +39,7 @@ var attack_button: Button
 var time_button: Button
 var query_view: RichTextLabel
 var result_view: RichTextLabel
+var comparison_view: Label
 var impact_view: Label
 var patch_edit: CodeEdit
 var verify_button: Button
@@ -74,11 +77,11 @@ var block_feedback: String = ""
 const STAGES := ["APRENDER", "OBSERVAR", "PRACTICAR", "ATACAR", "DEFENDER", "VERIFICAR"]
 
 const LESSONS := {
-	"login": ["Una consulta es como una instrucción con espacios reservados para datos.", "Si se pegan datos directamente en la instrucción, una entrada puede cambiar su significado.", "La comilla cierra el texto. El comentario -- puede dejar la contraseña fuera de la comprobación."],
-	"search": ["Un buscador debe mostrar solo productos públicos.", "Si el término se pega dentro de la consulta, puede convertirse en instrucciones.", "UNION combina resultados compatibles y puede añadir datos que el buscador no debería mostrar."],
-	"order": ["El ordenamiento debe elegir una columna autorizada.", "Un identificador pegado directamente puede incluir una expresión SQL.", "CASE WHEN puede cambiar el orden según una condición y revelar una señal indirecta."],
-	"blind": ["Una aplicación puede filtrar información sin mostrar filas.", "Una condición manipulada puede cambiar una respuesta o un tiempo simulado.", "Comparar señales verdadera y falsa permite inferir información; ninguna demora es real."],
-	"final": ["NullSec desafía a CyberAcademy en un entorno autorizado.", "Investiga tres superficies: autenticación, búsqueda y ordenamiento.", "Conserva las evidencias, corrige cada superficie y documenta causa y defensa."]
+	"login": ["Un inicio de sesión debe permitir el acceso solo cuando coinciden usuario y contraseña. La aplicación consulta sus registros para comprobarlos.", "Una inyección SQL ocurre cuando una entrada pasa de ser un dato a formar parte de las instrucciones de la consulta. Esto puede ocurrir si la aplicación concatena el texto sin separarlo.", "Una comilla puede cerrar el dato y -- inicia un comentario SQL. Si la contraseña queda comentada, el riesgo es acceder sin autorización."],
+	"search": ["CyberStore es una tienda ficticia. Su buscador debe encontrar productos públicos, nunca mostrar los secretos guardados en otra tabla.", "La tienda construye una consulta para buscar el texto que escribes. Si pega ese texto dentro de las instrucciones, una entrada manipulada puede cambiar lo que la consulta solicita.", "UNION une resultados compatibles de dos consultas. Un atacante podría añadir filas de otra tabla; el riesgo es exponer información que no pertenece al catálogo."],
+	"order": ["Una lista de proyectos permite elegir por qué columna se ordenan los resultados, por ejemplo nombre o presupuesto.", "Si la aplicación pega esa elección directamente en ORDER BY, la entrada puede convertirse en una expresión SQL en lugar de un nombre de columna.", "Una condición CASE WHEN puede cambiar el orden según un dato. Un atacante podría comparar los órdenes e inferir información privada."],
+	"blind": ["Una aplicación puede responder de manera distinta sin mostrar ningún dato privado. Es como una puerta que solo responde sí o no.", "Si una entrada modifica la condición de una consulta, una diferencia de respuesta puede revelar si la condición es verdadera.", "Este laboratorio muestra señales y tiempos virtuales: no espera realmente ni consulta servidores. El riesgo es inferir información poco a poco."],
+	"final": ["NullSec reta a CyberAcademy en una competición autorizada. Investigarás sistemas ficticios, no aplicaciones reales.", "Un login vulnerable puede dejar entrar; un buscador puede añadir filas de otra tabla; un ordenamiento inseguro puede aceptar expresiones.", "Reproduce las tres señales, usa parámetros para valores y una lista blanca para columnas; después escribe un reporte con evidencia y corrección."]
 }
 
 func _ready() -> void:
@@ -121,6 +124,14 @@ func _build_ui() -> void:
 	UI.button(header, "Volver al mundo · Esc", close_lab)
 	objective = UI.paragraph(main, "", 17)
 	objective.add_theme_color_override("font_color", TEXT)
+	current_objective = UI.paragraph(main, "", 16)
+	current_objective.add_theme_color_override("font_color", GREEN)
+	activity_progress = ProgressBar.new()
+	activity_progress.min_value = 0
+	activity_progress.max_value = 5
+	activity_progress.show_percentage = false
+	activity_progress.custom_minimum_size.y = 8
+	main.add_child(activity_progress)
 	lesson = UI.paragraph(main, "", 15)
 	lesson.add_theme_color_override("font_color", MUTED)
 	var tutor_row := HBoxContainer.new()
@@ -253,6 +264,7 @@ func _build_result_panel() -> void:
 	result_view.add_theme_font_size_override("normal_font_size", 15)
 	result_view.add_theme_stylebox_override("normal", UI.style(Color("0D1117"), Color("30363D"), 1))
 	box.add_child(result_view)
+	comparison_view = UI.paragraph(box, "", 15)
 	impact_view = UI.paragraph(box, "Esperando una prueba autorizada…", 15)
 	impact_view.add_theme_color_override("font_color", MUTED)
 
@@ -267,8 +279,8 @@ func _build_defense_panel() -> void:
 	box.add_child(selected_blocks_box)
 	var controls := HBoxContainer.new()
 	box.add_child(controls)
-	UI.button(controls, "↑ Subir", func(): _move_selected(-1))
-	UI.button(controls, "↓ Bajar", func(): _move_selected(1))
+	UI.button(controls, "Subir", func(): _move_selected(-1))
+	UI.button(controls, "Bajar", func(): _move_selected(1))
 	UI.button(controls, "Quitar", _remove_selected)
 	patch_edit = UI.editor(box, 110)
 	patch_edit.add_theme_font_size_override("font_size", 15)
@@ -296,7 +308,7 @@ func _build_defense_panel() -> void:
 
 func _layout_responsive() -> void:
 	if grid == null: return
-	grid.columns = 1 if get_viewport_rect().size.x < 1040.0 else 2
+	grid.columns = 1 if DisplayServer.is_touchscreen_available() or get_viewport_rect().size.x < 1040.0 else 2
 
 func open_lab() -> void:
 	if campaign == null: return
@@ -332,7 +344,7 @@ func _setup_mission() -> void:
 	secondary_input.placeholder_text = "Contraseña" if kind == "login" else "Término de búsqueda UNION"
 	sort_input.placeholder_text = "sort_by / expresión CASE WHEN"
 	predicate_input.placeholder_text = "Condición blind, por ejemplo contenido LIKE 'AURORA%'"
-	attack_button.text = "Ejecutar cadena NullSec" if kind == "final" else "Ejecutar ataque simulado"
+	attack_button.text = {"login": "Probar inicio de sesión", "search": "Buscar en CyberStore", "order": "Probar orden", "blind": "Comprobar respuesta", "final": "Probar los tres sistemas"}[kind]
 	time_button.visible = kind == "blind"
 	if kind == "blind": attack_button.text = "Medir respuesta booleana"
 	patch_edit.text = campaign.patch_text
@@ -347,10 +359,12 @@ func _setup_mission() -> void:
 	verification_view.text = "Aún no hay regresión."
 	query_view.text = "[color=#8B949E]Esperando la consulta construida…[/color]"
 	result_view.text = "Esperando la salida del laboratorio…"
+	comparison_view.text = ""
 	impact_view.text = "La alerta y su explicación aparecerán después de ejecutar la prueba."
 	_set_defaults(kind)
 	_refresh_tutor()
 	_show_stage()
+	_update_comparison()
 	refresh()
 
 func _set_defaults(kind: String) -> void:
@@ -366,20 +380,35 @@ func _show_stage() -> void:
 	var kind := str(campaign.mission().kind)
 	tutor_message.text = "Byte: " + ["Te explicaré una idea a la vez.", "Observa la parte resaltada; puedes repetirla.", "Practiquemos juntos; equivocarse no cuesta vidas.", "Ahora inténtalo tú. Pide una pista si la necesitas.", _defense_explanation(kind), "Construye el arreglo con bloques; pulsar o arrastrar son equivalentes."][mini(stage, 5)]
 	phase.text = STAGES[mini(stage, STAGES.size() - 1)]
-	objective.text = " → ".join(STAGES) + "   ·   " + phase.text
+	objective.text = " > ".join(STAGES)
+	activity_progress.value = stage
+	current_objective.text = "OBJETIVO ACTUAL: " + _next_action(kind, state)
 	lesson.text = "Profesor Byte · " + str(campaign.mission().title)
 	for card in cards: card.visible = false
 	previous_button.visible = stage <= 1 and step > 0
-	repeat_button.visible = stage <= 1
-	next_button.visible = stage <= 1 or (stage == 2 and bool(state.guided)) or stage == 4
-	hint_button.visible = stage == 3 or stage == 4
+	repeat_button.visible = true
+	next_button.visible = stage <= 1 or (stage == 2 and bool(state.guided)) or (stage == 3 and bool(state.get("independent_done", false))) or stage == 4
+	hint_button.visible = stage >= 2
 	claim.visible = stage == 5
 	normal_example_button.visible = stage == 2 and not bool(state.normal)
+	for button in [next_button, normal_example_button, attack_button, verify_button, claim]:
+		button.remove_theme_stylebox_override("normal")
+	var suggested: Button
+	if stage <= 1 or stage == 4 or (stage == 2 and state.guided) or (stage == 3 and state.get("independent_done", false)):
+		suggested = next_button
+	elif stage == 2 and not state.normal:
+		suggested = normal_example_button
+	elif stage == 2 or stage == 3:
+		suggested = attack_button
+	elif stage == 5 and not campaign.evidence.has("defense"):
+		suggested = verify_button
+	if suggested != null:
+		suggested.add_theme_stylebox_override("normal", UI.style(Color("24463B"), GREEN, 2))
 	lesson_visual.text = ""
 	match stage:
 		0:
 			lesson_text.text = "[color=#58A6FF]BYTE · APRENDER[/color]\n" + str(LESSONS[kind][mini(step, 2)])
-			lesson_visual.text = "[color=#39D353]DATOS[/color]  →  aplicación  →  [color=#58A6FF]INSTRUCCIÓN SQL[/color]"
+			lesson_visual.text = "[color=#39D353]DATOS[/color]  >  aplicación  >  [color=#58A6FF]INSTRUCCIÓN SQL[/color]"
 		1:
 			lesson_text.text = "[color=#58A6FF]BYTE · OBSERVAR[/color]\n" + _demo_explanation(kind, step)
 			lesson_visual.text = _demo_visual(kind, step)
@@ -387,16 +416,16 @@ func _show_stage() -> void:
 			cards[0].visible = true
 			cards[1].visible = true
 			cards[2].visible = true
-			lesson_text.text = "[color=#58A6FF]BYTE · PRÁCTICA GUIADA[/color]\n" + ("Paso 1: escribe los datos y pulsa Ejecutar ataque simulado, o usa el botón de ejemplo. " + _normal_example(kind) if not state.normal else ("Paso 2: prueba la entrada guiada y compara el resultado con el anterior." if not state.guided else "Paso 3: compara ambas trazas. La entrada manipulada cambió la estructura; pulsa Continuar."))
+			lesson_text.text = "[color=#58A6FF]BYTE · PRÁCTICA GUIADA[/color]\n" + ("Primero comprobaremos cómo responde la aplicación a datos normales." if not state.normal else ("Ahora introduciremos una entrada manipulada en el laboratorio ficticio." if not state.guided else "Compara el resultado normal con el manipulado en el panel C."))
 			if state.normal and not state.guided: lesson_visual.text = "Ejemplo guiado: " + _guided_example(kind)
 		3:
 			cards[0].visible = true
 			cards[1].visible = true
 			cards[2].visible = true
-			lesson_text.text = "[color=#FF7B72]MISIÓN INDEPENDIENTE[/color]\nDemuestra la vulnerabilidad con una entrada propia. Solicita una pista si la necesitas."
+			lesson_text.text = "[color=#FF7B72]MISIÓN INDEPENDIENTE[/color]\n" + ("La prueba demuestra el riesgo en el laboratorio. Lee el resultado en el panel C antes de continuar." if state.get("independent_done", false) else "Prueba si recuerdas cómo cambiar la consulta. Puedes solicitar pistas sin perder vidas.")
 		4:
 			lesson_text.text = "[color=#39D353]BYTE · DEFENDER[/color]\n" + _defense_explanation(kind)
-			lesson_visual.text = "[color=#58A6FF]ESTRUCTURA SQL[/color]   │   [color=#39D353]VALORES SEPARADOS[/color]"
+			lesson_visual.text = "[color=#58A6FF]ESTRUCTURA SQL[/color]   |   [color=#39D353]VALORES SEPARADOS[/color]"
 		5:
 			cards[3].visible = true
 			lesson_text.text = "[color=#39D353]VERIFICAR[/color]\nOrganiza los bloques y ejecuta las pruebas con datos ficticios. No se ejecuta Python."
@@ -406,6 +435,19 @@ func _show_stage() -> void:
 	stage_tween.tween_property(lesson_visual, "visible_characters", lesson_visual.get_total_character_count(), 0.35 if not reduced_motion else 0.0)
 	campaign.save_lesson()
 	lesson_progress.emit()
+
+func _next_action(kind: String, state: Dictionary) -> String:
+	var stage := int(state.stage)
+	if stage <= 1: return "Lee la explicación y pulsa Continuar."
+	if stage == 2:
+		if not state.normal: return "Pulsa 'Probar entrada normal de ejemplo'. " + _normal_example(kind)
+		if not state.guided: return "Escribe el ejemplo guiado en el formulario y pulsa '" + attack_button.text + "'."
+		return "Compara las dos pruebas en el panel C y pulsa Continuar."
+	if stage == 3: return "Lee el resultado del panel C y pulsa Continuar para aprender la defensa." if state.get("independent_done", false) else "Escribe una entrada que cambie la consulta y pulsa '" + attack_button.text + "'; usa Pedir pista si lo necesitas."
+	if stage == 4: return "Lee cómo separar datos e instrucciones y pulsa Continuar."
+	if not campaign.evidence.has("defense"): return "Pulsa los bloques para construir la defensa y después pulsa 'Aplicar parche y ejecutar pruebas'."
+	if kind == "final" and not campaign.evidence.has("report"): return "Completa el reporte con evidencia, causa y corrección, y pulsa Guardar reporte."
+	return "Las pruebas pasaron. Pulsa Entregar misión para desbloquear la siguiente."
 
 func _render_blocks() -> void:
 	if available_blocks == null or campaign == null: return
@@ -429,7 +471,7 @@ func _render_blocks() -> void:
 		var button = BlockButton.new()
 		button.block_id = id
 		button.source = "selected"
-		button.text = ("▶ " if i == selected_index else "   ") + Blocks.PIECES[id]
+		button.text = ("> " if i == selected_index else "   ") + Blocks.PIECES[id]
 		button.add_theme_font_override("font", MONO)
 		button.add_theme_font_size_override("font_size", 13)
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -443,7 +485,7 @@ func _render_blocks() -> void:
 
 func _add_block(id: String) -> void:
 	if id in selected_blocks: return
-	campaign.evidence.erase("defense")
+	_invalidate_defense()
 	selected_blocks.append(id)
 	selected_index = selected_blocks.size() - 1
 	tutor_message.text = "Byte: " + ("Ese bloque incorpora entrada sin validar; observa si es apropiado." if id.begins_with("unsafe_") else "Bloque añadido. Comprueba qué necesita antes de ejecutarse.")
@@ -458,7 +500,7 @@ func _select_block(index: int) -> void:
 func _move_selected(direction: int) -> void:
 	var target := selected_index + direction
 	if selected_index < 0 or target < 0 or target >= selected_blocks.size(): return
-	campaign.evidence.erase("defense")
+	_invalidate_defense()
 	var item = selected_blocks.pop_at(selected_index)
 	selected_blocks.insert(target, item)
 	selected_index = target
@@ -468,7 +510,7 @@ func _move_selected(direction: int) -> void:
 
 func _remove_selected() -> void:
 	if selected_index < 0 or selected_index >= selected_blocks.size(): return
-	campaign.evidence.erase("defense")
+	_invalidate_defense()
 	selected_blocks.remove_at(selected_index)
 	selected_index = -1
 	_render_blocks()
@@ -481,7 +523,7 @@ func _drop_block(data: Dictionary, target_id: String) -> void:
 	var from := selected_blocks.find(id)
 	var target := selected_blocks.find(target_id)
 	if from < 0 or target < 0 or from == target: return
-	campaign.evidence.erase("defense")
+	_invalidate_defense()
 	selected_blocks.remove_at(from)
 	selected_blocks.insert(target, id)
 	selected_index = target
@@ -510,11 +552,15 @@ func _try_normal_example() -> void:
 func _demo_explanation(kind: String, step: int) -> String:
 	if kind == "login":
 		return ["Una entrada normal permanece entre comillas y la contraseña sigue siendo necesaria.", "La comilla simple cierra el valor de usuario antes de lo previsto.", "Los guiones -- inician un comentario: la condición de contraseña queda comentada."][mini(step, 2)]
+	if kind == "search":
+		return ["En CyberStore, buscar Terminal solo debería devolver productos del catálogo público. Abajo verás un ejemplo del resultado normal.", "UNION une dos conjuntos de resultados si tienen columnas compatibles. Aquí el catálogo tiene tres columnas: identificador, nombre y precio.", "Si se concatena el texto, una comilla cierra el término y UNION puede agregar filas del vault ficticio. Esto expone información ajena al catálogo."][mini(step, 2)]
 	return ["Observa cómo se incorpora una entrada normal a la consulta.", "Ahora una entrada manipulada modifica la estructura que controla la aplicación.", str(LESSONS[kind][2])][mini(step, 2)]
 
 func _demo_visual(kind: String, step: int) -> String:
 	if kind == "login":
-		return ["SELECT … usuario = '[color=#39D353]admin[/color]' AND clave = '…'", "SELECT … usuario = 'admin[color=#FF7B72]'[/color] …", "SELECT … usuario = 'admin' [color=#FF7B72]-- AND clave = '…'[/color]  ← comentado"][mini(step, 2)]
+		return ["SELECT ... usuario = '[color=#39D353]admin[/color]' AND clave = '...'", "SELECT ... usuario = 'admin[color=#FF7B72]'[/color] ...", "SELECT ... usuario = 'admin' [color=#FF7B72]-- AND clave = '...'[/color]  (comentado)"][mini(step, 2)]
+	if kind == "search":
+		return ["Búsqueda normal: Terminal > producto público: Terminal segura", "[color=#58A6FF]CATÁLOGO: id | nombre | precio[/color]  +  [color=#FF7B72]OTRA TABLA: id | secreto | 0[/color]  >  resultados combinados", "WHERE name LIKE '%[color=#FF7B72]' UNION SELECT id, secret, 0 FROM vault --[/color]%'\nLa entrada cierra el texto y añade datos sintéticos; -- comenta el sufijo."][mini(step, 2)]
 	return ["[color=#58A6FF]consulta[/color] + [color=#39D353]dato normal[/color]", "[color=#58A6FF]consulta[/color] + [color=#FF7B72]entrada manipulada[/color]", _guided_example(kind)][mini(step, 2)]
 
 func _guided_example(kind: String) -> String:
@@ -532,6 +578,8 @@ func _next_step() -> void:
 	if int(state.stage) <= 1 and int(state.step) < 2:
 		state.step += 1
 	elif int(state.stage) == 2 and not state.guided:
+		return
+	elif int(state.stage) == 3 and not state.get("independent_done", false):
 		return
 	else:
 		if int(state.stage) == 2:
@@ -589,12 +637,14 @@ func _advance_practice(result: Dictionary) -> void:
 			if kind == "final": legitimate = has_input
 			if has_input and legitimate and not result.get("attack", false):
 				state.normal = true
+				state["normal_summary"] = _result_summary(result)
 				practice_feedback.text = "Prueba normal completada. Ahora sigue el paso 2."
 			else:
 				practice_feedback.text = "Todavía estás en el paso 1. Pulsa «Probar entrada normal de ejemplo» arriba; después podrás probar el ataque."
 			practice_feedback.visible = true
 		elif result.get("attack", false):
 			state.guided = true
+			state["attack_summary"] = _result_summary(result)
 			practice_feedback.text = "Ataque observado. Compara la consulta y pulsa Continuar."
 			practice_feedback.visible = true
 		else:
@@ -602,10 +652,29 @@ func _advance_practice(result: Dictionary) -> void:
 			practice_feedback.text = "Revisa el ejemplo del paso 2. " + ("En login, escribe admin' -- sin añadir una comilla al final." if campaign.mission().kind == "login" else "Comprueba que lo hayas copiado completo.")
 			practice_feedback.visible = true
 	elif int(state.stage) == 3 and result.get("attack", false):
-		practice_feedback.visible = false
-		state.stage = 4
-		state.step = 0
+		state["independent_done"] = true
+		practice_feedback.text = "Prueba completada. Lee el resultado y pulsa Continuar para ver cómo proteger la aplicación."
+		practice_feedback.visible = true
 	_show_stage()
+	_update_comparison()
+
+func _result_summary(result: Dictionary) -> String:
+	var rows: Array = result.get("rows", [])
+	var parts := PackedStringArray()
+	for row in rows:
+		var values := PackedStringArray()
+		for column in result.get("columns", []): values.append(str(row.get(column, "")))
+		parts.append(" | ".join(values))
+	if parts.is_empty(): return str(result.get("message", "Sin filas visibles"))
+	return " ; ".join(parts)
+
+func _update_comparison() -> void:
+	var state := campaign.lesson_state()
+	var normal := str(state.get("normal_summary", ""))
+	var attack := str(state.get("attack_summary", ""))
+	comparison_view.text = ""
+	if not normal.is_empty(): comparison_view.text = "PRUEBA NORMAL: " + normal
+	if not attack.is_empty(): comparison_view.text += "\nPRUEBA MANIPULADA: " + attack
 
 func _render_result(result: Dictionary) -> void:
 	var query: String = str(result.get("query", ""))
@@ -644,17 +713,21 @@ func _highlight_query(query: String, fragment: String) -> String:
 	return safe_query.substr(0, index) + "[bgcolor=#4b2424][color=#FF7B72]" + safe_fragment + "[/color][/bgcolor]" + safe_query.substr(index + safe_fragment.length())
 
 func _escape_bbcode(value: String) -> String:
-	return value.replace("[", "[lb]").replace("]", "[rb]")
+	return value.replace("[", "[lb]")
+
+func _invalidate_defense() -> void:
+	if campaign.evidence.erase("defense"):
+		verification_view.text = "La solución cambió. Ejecuta nuevamente las pruebas."
 
 func _test_patch() -> void:
 	if int(campaign.lesson_state().stage) != 5: return
+	campaign.evidence.erase("defense")
 	var result: Dictionary = Blocks.evaluate(str(campaign.mission().kind), selected_blocks, campaign.db)
 	verification_view.text = str(result.message)
 	tutor_message.text = "Byte: " + ("¡Excelente! La estructura y los datos permanecen separados. " if result.ok else "Aún falta algo. ") + str(result.message)
 	if result.ok:
 		campaign.patch_text = patch_edit.text
 		campaign.mark("defense")
-	phase.text = "FASE B · SISTEMA PROTEGIDO" if campaign.evidence.has("defense") else "FASE B · PARCHE INCOMPLETO"
 	performed.emit(campaign.evidence.has("defense"))
 	_refresh_tutor()
 	refresh()
@@ -667,21 +740,32 @@ func _save_report() -> void:
 
 func refresh() -> void:
 	if campaign == null or claim == null: return
+	if int(campaign.lesson_state().stage) == 5:
+		phase.text = "PRUEBAS SUPERADAS" if campaign.evidence.has("defense") else "VERIFICAR DEFENSA"
 	var lines := PackedStringArray()
 	var mission_goals: Array = campaign.mission().get("goals", [])
 	var criteria: Array = campaign.goals()
 	for i in range(criteria.size()): lines.append(("[OK]  " if campaign.evidence.has(criteria[i]) else "[  ]  ") + str(mission_goals[i]))
 	checklist.text = "\n".join(lines)
 	claim.disabled = not campaign.can_complete()
+	current_objective.text = "OBJETIVO ACTUAL: " + _next_action(str(campaign.mission().kind), campaign.lesson_state())
 	status_label.text = "EVIDENCIAS %d/%d · XP %d · ENTORNO AISLADO" % [campaign.evidence.size(), criteria.size(), campaign.xp]
 
 func _hint() -> void:
 	var count := int(campaign.hints.get(str(campaign.current), 0))
 	var hints: Array = campaign.mission().hints
+	var state := campaign.lesson_state()
+	if int(state.stage) == 2:
+		if not state.normal: hints = [_normal_example(str(campaign.mission().kind)), "Puedes pulsar el botón 'Probar entrada normal de ejemplo'.", "Después mira el resultado en el panel C."]
+		elif not state.guided: hints = ["Copia el ejemplo guiado que aparece debajo de la explicación.", "Escríbelo en el formulario del panel A y pulsa el botón de prueba.", "Ejemplo para esta misión: " + _guided_example(str(campaign.mission().kind))]
+		else: hints = ["Compara las dos pruebas en el panel C.", "Busca qué dato cambió y pulsa Continuar.", "La segunda entrada altera una parte de la consulta original."]
+	elif int(state.stage) == 5:
+		hints = ["Pulsa un bloque para añadirlo a tu solución.", _defense_explanation(str(campaign.mission().kind)), "Retira los bloques que concatenen entrada y ejecuta las pruebas."]
 	if campaign.mission().kind == "login" and int(campaign.lesson_state().stage) == 3:
 		hints = ["Recuerda qué puede ocurrir al introducir una comilla simple.", "Un comentario SQL puede dejar de lado el resto de la condición.", "Comienza con un usuario existente seguido de una comilla; después considera el comentario."]
 	campaign.hints[str(campaign.current)] = mini(count + 1, 3)
-	hint_label.text = "PISTA %d/3 · %s" % [mini(count + 1, 3), hints[mini(count, 2)]]
+	tutor_message.text = "Byte - pista %d/3: %s" % [mini(count + 1, 3), hints[mini(count, 2)]]
+	hint_label.text = "Pista %d/3" % mini(count + 1, 3)
 	campaign.save_lesson()
 
 func _refresh_tutor() -> void:
